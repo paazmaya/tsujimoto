@@ -876,16 +876,43 @@ Examples:
             logger.error("✗ Error processing %s: %s", dataset_name.upper(), str(e))
 
     # Combine datasets (default behavior unless --no-combine specified)
+    combined_dataset_name = None
     if not args.no_combine and len(processed_datasets) > 1:
         try:
             logger.info("\nCombining %d datasets into unified dataset...", len(processed_datasets))
             processor.combine_datasets(processed_datasets, output_name="combined_all_etl")
+            combined_dataset_name = "combined_all_etl"
             logger.info("✓ Combined dataset created")
         except Exception as e:
             logger.error("Error combining datasets: %s", str(e))
             return 1
     elif args.no_combine:
         logger.info("Dataset combination skipped (--no-combine)")
+
+    # Create root metadata.json for training scripts
+    combined_metadata_path = output_dir / combined_dataset_name / "metadata.json"
+    if combined_dataset_name and combined_metadata_path.exists():
+        try:
+            logger.info("\nCreating root metadata for training scripts...")
+            with open(combined_metadata_path, encoding="utf-8") as f:
+                combined_metadata = json.load(f)
+
+            # Create root metadata with reference to primary dataset
+            root_metadata = {
+                "primary_dataset": combined_dataset_name,
+                "num_classes": combined_metadata.get("num_classes"),
+                "total_samples": combined_metadata.get("total_samples"),
+                "target_size": combined_metadata.get("target_size"),
+                "jis_to_class": combined_metadata.get("jis_to_class", {}),
+            }
+
+            root_metadata_path = output_dir / "metadata.json"
+            with open(root_metadata_path, "w", encoding="utf-8") as f:
+                json.dump(root_metadata, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"✓ Root metadata created: {root_metadata_path}")
+        except Exception as e:
+            logger.warning(f"⚠ Could not create root metadata: {e}")
 
     # Summary
     logger.info("\n=== Summary ===")

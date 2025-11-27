@@ -55,18 +55,18 @@ uv run python scripts/train_cnn_model.py --data-dir dataset
 
 # RNN (best accuracy, 98.4% on ETL9G)
 # Automatically uses combined_all_etl (934K) if available, else ETL9G (607K)
-uv run python scripts/train_radical_rnn.py --data-dir dataset
+uv run python scripts/train_radical_rnn.py
 
 # HierCode (recommended, 95.56% + quantizable on ETL9G)
 # Automatically uses combined_all_etl (934K) if available, else ETL9G (607K)
-uv run python scripts/train_hiercode.py --data-dir dataset --epochs 30
+uv run python scripts/train_hiercode.py --epochs 30
 
 # With checkpoint resume (crash-safe)
-uv run python scripts/train_hiercode.py --data-dir dataset --resume-from training/hiercode/checkpoints/checkpoint_epoch_015.pt --epochs 30
+uv run python scripts/train_hiercode.py --resume-from training/hiercode/checkpoints/checkpoint_epoch_015.pt --epochs 30
 
 # QAT (lightweight deployment, 1.7 MB)
 # Automatically uses combined_all_etl (934K) if available, else ETL9G (607K)
-uv run python scripts/train_qat.py --data-dir dataset --checkpoint-dir training/qat/checkpoints
+uv run python scripts/train_qat.py --checkpoint-dir training/qat/checkpoints
 ```
 
 **Dataset Selection**: All scripts automatically select the best available dataset in this priority: `combined_all_etl` → `etl9g` → `etl8g` → `etl7` → `etl6`. See [Dataset Auto-Detection Priority](#dataset-auto-detection-priority) above.
@@ -75,22 +75,22 @@ uv run python scripts/train_qat.py --data-dir dataset --checkpoint-dir training/
 
 ```ps1
 # Run 1: Trains from scratch (epochs 1-15), saves checkpoints
-uv run python scripts/train_cnn_model.py --data-dir dataset --epochs 30
+uv run python scripts/train_cnn_model.py --epochs 30
 
 # Interrupted at epoch 15? Just re-run - automatically resumes from epoch 16
-uv run python scripts/train_cnn_model.py --data-dir dataset --epochs 30
+uv run python scripts/train_cnn_model.py --epochs 30
 
 # Resume from specific checkpoint
-uv run python scripts/train_cnn_model.py --data-dir dataset --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt
+uv run python scripts/train_cnn_model.py --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt
 
 # Start fresh (ignore existing checkpoints)
-uv run python scripts/train_cnn_model.py --data-dir dataset --no-checkpoint
+uv run python scripts/train_cnn_model.py --no-checkpoint
 
 # Keep more checkpoints (default is 5, keeps last 10)
-uv run python scripts/train_cnn_model.py --data-dir dataset --keep-last-n 10
+uv run python scripts/train_cnn_model.py --keep-last-n 10
 
 # Change checkpoint directory
-uv run python scripts/train_cnn_model.py --data-dir dataset --checkpoint-dir training/cnn/my_checkpoints
+uv run python scripts/train_cnn_model.py --checkpoint-dir training/cnn/my_checkpoints
 ```
 
 ### Checkpoint Manager API
@@ -775,24 +775,24 @@ A: Just re-run the training command and it automatically resumes from the latest
 
 ```ps1
 # First run - trains from scratch
-uv run python scripts/train_cnn_model.py --data-dir dataset --epochs 30
+uv run python scripts/train_cnn_model.py --epochs 30
 
 # If interrupted, just run again - resumes automatically
-uv run python scripts/train_cnn_model.py --data-dir dataset --epochs 30
+uv run python scripts/train_cnn_model.py --epochs 30
 ```
 
 **Q: How do I start fresh training and ignore old checkpoints?**
 A: Use the `--no-checkpoint` flag:
 
 ```ps1
-uv run python scripts/train_cnn_model.py --data-dir dataset --no-checkpoint
+uv run python scripts/train_cnn_model.py --no-checkpoint
 ```
 
 **Q: Can I manually specify which checkpoint to resume from?**
 A: Yes, use `--resume-from`:
 
 ```ps1
-uv run python scripts/train_cnn_model.py --data-dir dataset --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt
+uv run python scripts/train_cnn_model.py --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt
 ```
 
 **Q: How many checkpoints are kept?**
@@ -817,11 +817,3 @@ A: `uv` provides isolated, reproducible environments with locked dependency vers
 - **GPU**: NVIDIA GPU with CUDA 11.8+ recommended
 - **RAM**: 8+ GB (16+ GB recommended)
 - **Storage**: 15+ GB free space
-
-## 🚀 Next Steps
-
-1. **Read** [PROJECT_DIARY.md](PROJECT_DIARY.md) for complete project overview
-2. **Setup** environment with `uv sync`
-3. **Prepare** datasets with `uv run python scripts/prepare_dataset.py` and some other script...
-4. **Train** model with `uv run python scripts/train_cnn_model.py --data-dir dataset`
-5. **Export** to ONNX for deployment with `uv run python scripts/convert_to_onnx.py`

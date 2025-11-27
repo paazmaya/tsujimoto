@@ -27,15 +27,14 @@ import torch.nn as nn
 from checkpoint_manager import CheckpointManager, setup_checkpoint_arguments
 from optimization_config import (
     RadicalRNNConfig,
-    create_data_loaders,
     get_dataset_directory,
     get_optimizer,
     get_scheduler,
-    load_chunked_dataset,
+    prepare_dataset_and_loaders,
     save_config,
     verify_and_setup_gpu,
 )
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -400,9 +399,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python train_radical_rnn.py --data-dir dataset
-  python train_radical_rnn.py --data-dir dataset --rnn-type lstm --rnn-hidden-size 256
-  python train_radical_rnn.py --data-dir dataset --radical-vocab-size 500 --batch-size 32
+  python train_radical_rnn.py
+  python train_radical_rnn.py --rnn-type lstm --rnn-hidden-size 256
+  python train_radical_rnn.py --radical-vocab-size 500 --batch-size 32 --checkpoint-dir training/rnn/checkpoints
+  python train_radical_rnn.py --no-checkpoint --epochs 50
         """,
     )
 
@@ -559,9 +559,32 @@ Examples:
 
     # ========== LOAD DATA ==========
     logger.info("📂 LOADING DATASET (auto-detecting best available)...")
-    X, y = load_chunked_dataset(config.data_dir)
-    train_loader, val_loader, test_loader = create_data_loaders(
-        X, y, config, sample_limit=args.sample_limit
+
+    # Define dataset factory for radical RNN processing
+    def create_radical_dataset(x: np.ndarray, y: np.ndarray):
+        """Factory for creating datasets compatible with RadicalRNN.
+        Handles image reshaping: [4096] -> [64, 64] -> [1, 64, 64]
+        """
+        # Reshape if flattened (4096,) -> (64, 64)
+        if x.ndim == 2 and x.shape[1] == 4096:
+            x = x.reshape(-1, 64, 64)
+
+        # Add channel dimension if needed: (N, 64, 64) -> (N, 1, 64, 64)
+        if x.ndim == 3:
+            x = x[:, np.newaxis, :, :]
+
+        # Convert to torch tensors and wrap in TensorDataset
+        x_tensor = torch.from_numpy(x).float()
+        y_tensor = torch.from_numpy(y).long()
+        return TensorDataset(x_tensor, y_tensor)
+
+    # Load and prepare datasets using unified helper
+    (X, y), num_classes, train_loader, val_loader = prepare_dataset_and_loaders(
+        data_dir=data_dir,
+        dataset_fn=create_radical_dataset,
+        batch_size=config.batch_size,
+        sample_limit=args.sample_limit,
+        logger=logger,
     )
 
     # ========== CREATE MODEL ==========
@@ -638,18 +661,14 @@ Examples:
         # Clean up old checkpoints
         checkpoint_manager.cleanup_old_checkpoints(keep_last_n=5)
 
-    # ========== TESTING ==========
-    logger.info("🧪 TESTING...")
-    model.load_state_dict(torch.load(best_model_path, map_location=device))
-    test_loss, test_acc = trainer.validate(test_loader, criterion)
-    logger.info(f"Test Loss: {test_loss:.4f}, Acc: {test_acc:.2f}%")
+    # ========== VALIDATION SUMMARY ==========
+    logger.info("✅ TRAINING COMPLETE")
+    logger.info(f"Best validation accuracy: {best_val_acc:.2f}%")
 
     # ========== RESULTS ==========
     results = {
         "config": config.to_dict(),
         "best_val_acc": float(best_val_acc),
-        "test_acc": float(test_acc),
-        "test_loss": float(test_loss),
         "history": trainer.history,
     }
 

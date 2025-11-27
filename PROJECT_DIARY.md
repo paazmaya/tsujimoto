@@ -760,10 +760,10 @@ Run 2: Load checkpoint_epoch_004.pt → Resume from epoch 5
 
 ```bash
 # Train with auto-checkpointing
-uv run python scripts/train_qat.py --data-dir dataset --checkpoint-dir training/qat/checkpoints
+uv run python scripts/train_qat.py --checkpoint-dir training/qat/checkpoints
 
 # Resume after crash
-uv run python scripts/train_qat.py --data-dir dataset --checkpoint-dir training/qat/checkpoints \
+uv run python scripts/train_qat.py --checkpoint-dir training/qat/checkpoints \
     --resume-from training/qat/checkpoints/checkpoint_epoch_004.pt
 ```
 
@@ -1650,19 +1650,19 @@ manager.cleanup_old_checkpoints(keep_last_n=5)
 
 ```ps1
 # First run - trains from scratch, saves checkpoints
-uv run python scripts/train_cnn_model.py --data-dir dataset --epochs 30
+uv run python scripts/train_cnn_model.py --epochs 30
 
 # If interrupted at epoch 15:
 # - Just re-run the same command
 # - Automatically resumes from epoch 16!
-uv run python scripts/train_cnn_model.py --data-dir dataset --epochs 30
+uv run python scripts/train_cnn_model.py --epochs 30
 ```
 
 #### Scenario 2: Specific Resume Point
 
 ```ps1
 # Resume from specific checkpoint
-uv run python scripts/train_cnn_model.py --data-dir dataset \
+uv run python scripts/train_cnn_model.py \
   --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt \
   --epochs 30
 ```
@@ -1670,7 +1670,7 @@ uv run python scripts/train_cnn_model.py --data-dir dataset \
 #### Scenario 3: Start Fresh (Ignore Checkpoints)
 
 ```ps1
-uv run python scripts/train_cnn_model.py --data-dir dataset \
+uv run python scripts/train_cnn_model.py \
   --no-checkpoint \
   --epochs 30
 ```

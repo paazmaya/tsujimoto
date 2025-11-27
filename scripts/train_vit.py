@@ -19,7 +19,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -27,6 +27,7 @@ from checkpoint_manager import CheckpointManager, setup_checkpoint_arguments
 from optimization_config import (
     ViTConfig,
     create_data_loaders,
+    get_dataset_directory,
     get_optimizer,
     get_scheduler,
     load_chunked_dataset,
@@ -340,7 +341,7 @@ class ViTTrainer:
         self.device = device
         self.history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
         # GradScaler for mixed precision training stability
-        self.scaler: Optional[GradScaler] = GradScaler(device)
+        self.scaler: GradScaler = GradScaler(device)
 
     def train_epoch(self, train_loader: DataLoader, optimizer, criterion, epoch: int):
         """Train one epoch with mixed precision"""
@@ -425,10 +426,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python train_vit.py --data-dir dataset
-  python train_vit.py --data-dir dataset --embedding-dim 192 --num-heads 6
-  python train_vit.py --data-dir dataset --num-transformer-layers 8 --patch-size 4
-  python train_vit.py --data-dir dataset --use-tokens-to-tokens --t2t-kernel-sizes 3,3,3
+  python train_vit.py
+  python train_vit.py --embedding-dim 192 --num-heads 6
+  python train_vit.py --num-transformer-layers 8 --patch-size 4
+  python train_vit.py --use-tokens-to-tokens --t2t-kernel-sizes 3,3,3 --resume-from training/vit/checkpoints/checkpoint_epoch_010.pt
         """,
     )
 
@@ -539,8 +540,9 @@ Examples:
     t2t_kernel_sizes = tuple(map(int, args.t2t_kernel_sizes.split(",")))
 
     # ========== CREATE CONFIG ==========
+    data_dir = str(get_dataset_directory())
     config = ViTConfig(
-        data_dir=args.data_dir,
+        data_dir=data_dir,
         image_size=args.image_size,
         num_classes=args.num_classes,
         epochs=args.epochs,

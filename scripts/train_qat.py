@@ -409,9 +409,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python train_qat.py --data-dir dataset
-  python train_qat.py --data-dir dataset --qat-backend fbgemm --epochs 30
-  python train_qat.py --data-dir dataset --qat-bits 8 --learning-rate 0.001
+  python train_qat.py
+  python train_qat.py --qat-backend fbgemm --epochs 30
+  python train_qat.py --qat-bits 8 --learning-rate 0.001 --checkpoint-dir training/qat/checkpoints
+  python train_qat.py --no-checkpoint --qat-start-epoch 10 --qat-fine-tune-lr 0.00005
         """,
     )
 

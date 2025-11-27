@@ -525,7 +525,7 @@ def create_balanced_loaders(x, y, batch_size, test_size=0.15, val_size=0.15):  #
 
         # First split: train+val vs test
         X_temp, X_test, y_temp, y_test = train_test_split(
-            X,  # noqa: F821
+            x,
             y,
             test_size=test_size,
             random_state=42,
@@ -542,7 +542,7 @@ def create_balanced_loaders(x, y, batch_size, test_size=0.15, val_size=0.15):  #
 
         # First split: train+val vs test
         X_temp, X_test, y_temp, y_test = train_test_split(
-            X,  # noqa: F821
+            x,
             y,
             test_size=test_size,
             stratify=y,

@@ -503,18 +503,31 @@ def create_data_loaders(
     from sklearn.model_selection import train_test_split
 
     if sample_limit:
-        X = X[:sample_limit]  # noqa: F821
+        x = x[:sample_limit]
         y = y[:sample_limit]
 
-    # Train/val/test split
-    X_temp, X_test, y_temp, y_test = train_test_split(
-        X, y, test_size=config.test_split, random_state=config.random_seed, stratify=y
-    )
+    # Train/val/test split with fallback for small datasets
+    try:
+        X_temp, X_test, y_temp, y_test = train_test_split(
+            x, y, test_size=config.test_split, random_state=config.random_seed, stratify=y
+        )
+    except ValueError:
+        # Fallback to non-stratified split for small datasets
+        logger.warning("⚠️ Using non-stratified split (stratification failed on small dataset)")
+        X_temp, X_test, y_temp, y_test = train_test_split(
+            x, y, test_size=config.test_split, random_state=config.random_seed
+        )
 
     val_size = config.val_split / (1.0 - config.test_split)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_temp, y_temp, test_size=val_size, random_state=config.random_seed, stratify=y_temp
-    )
+    try:
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_temp, y_temp, test_size=val_size, random_state=config.random_seed, stratify=y_temp
+        )
+    except ValueError:
+        # Fallback to non-stratified split
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_temp, y_temp, test_size=val_size, random_state=config.random_seed
+        )
 
     # Create datasets
     train_dataset = ETL9GDataset(X_train, y_train, augment=config.augment_enabled, config=config)
@@ -677,7 +690,7 @@ def get_scheduler(optimizer, config: OptimizationConfig):
     Supports: cosine (default), step
     """
     if config.scheduler == "cosine":
-        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.scheduler_T_max)
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.scheduler_t_max)
     elif config.scheduler == "step":
         return torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
     else:

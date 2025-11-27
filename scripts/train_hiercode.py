@@ -464,10 +464,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python train_hiercode.py --data-dir dataset
-  python train_hiercode.py --data-dir dataset --codebook-total-size 1024 --hierarch-depth 10
-  python train_hiercode.py --data-dir dataset --multi-hot-k 5 --backbone-type lightweight_cnn
-  python train_hiercode.py --enable-zero-shot --zero-shot-radical-aware
+  python train_hiercode.py
+  python train_hiercode.py --codebook-total-size 1024 --hierarch-depth 10
+  python train_hiercode.py --multi-hot-k 5 --backbone-type lightweight_cnn --epochs 50
+  python train_hiercode.py --enable-zero-shot --zero-shot-radical-aware --resume-from training/hiercode/checkpoints/checkpoint_epoch_015.pt
         """,
     )
 

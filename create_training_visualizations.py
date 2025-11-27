@@ -26,21 +26,22 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-# Pastel color palette with high contrast
+# Soft, muted colors with high contrast (WCAG AA compliant)
+# These maintain a "pastel-like" aesthetic while ensuring readability
 PASTEL_COLORS = {
-    "train_loss": "#FF6B6B",  # Pastel red
-    "val_loss": "#4ECDC4",  # Pastel teal
-    "train_acc": "#FFD93D",  # Pastel yellow
-    "val_acc": "#6BCB77",  # Pastel green
-    "accent": "#A78BFA",  # Pastel purple
+    "train_loss": "#C73A3A",  # Soft red (5.13:1 vs white)
+    "val_loss": "#2563BE",  # Soft blue (5.82:1 vs white)
+    "train_acc": "#936D25",  # Soft brown-gold (4.53:1 vs white)
+    "val_acc": "#2D5016",  # Soft dark green (9.25:1 vs white)
+    "accent": "#8B3B9B",  # Soft purple
 }
 
-# High-contrast accent colors for annotations
+# Darker accent colors for contrast in annotations
 ACCENT_COLORS = {
-    "train_loss": "#8B0000",  # Dark red
-    "val_loss": "#006666",  # Dark teal
-    "train_acc": "#B8860B",  # Dark gold
-    "val_acc": "#2D5016",  # Dark green
+    "train_loss": "#7B1C1C",  # Deep red
+    "val_loss": "#0C2859",  # Deep blue
+    "train_acc": "#5C4A0A",  # Deep goldenrod
+    "val_acc": "#1B3A0D",  # Deep green
 }
 
 
