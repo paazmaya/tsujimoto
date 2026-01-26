@@ -488,14 +488,234 @@ Based on the project structure, current implementations include:
 
 ---
 
+## 14. New Developments (August 2025 - January 2026)
+
+### Event-Based Vision for Text Recognition
+
+**ESTR-CoT: Event Stream-based Scene Text Recognition with Chain-of-Thought Reasoning** (July 2025)
+
+- **Publication**: arXiv:2507.02200v1
+- **Innovation**: Combines event cameras with LLM-based reasoning for robust text recognition under challenging conditions
+- **Key Achievements**:
+  - BLEU-1 score of 0.648 (vs 0.430 for previous methods)
+  - Improved interpretability through chain-of-thought reasoning
+  - Superior performance in low illumination and fast motion scenarios
+  - Large-scale CoT dataset with 16,222 image-reasoning pairs
+- **Architecture**: EVA-CLIP (ViT-G/14) vision encoder + Vicuna-7B LLM with Q-Former alignment
+- **Advantages**: Explicitly structures inference for interpretability and accuracy
+- **Dataset**: EventSTR, WordArt*, IC15* benchmarks with reasoning annotations
+- **Code/Models**: https://github.com/Event-AHU/ESTR-CoT
+
+**Relevance to Kanji**: Event cameras demonstrate potential for handling complex character shapes under varied lighting conditions, applicable to handwritten Kanji with poor illumination or fast pen strokes.
+
+---
+
+### Line-Level OCR: Paradigm Shift in Document Recognition
+
+**Why Stop at Words? Unveiling the Bigger Picture through Line-Level OCR** (August 2025)
+
+- **Publication**: arXiv:2508.21693v1
+- **Revolutionary Insight**: Progression from character → word → line-level recognition
+- **Key Metrics**:
+  - **5.4% end-to-end accuracy improvement** over word-based pipelines
+  - **4x efficiency improvement** (eliminates error-prone word detection)
+  - 97.62% Flexible Character Accuracy (FCA) on English page images
+  - 85.76% Character Recognition Rate (CRR) when combined with Kraken
+- **Architecture**: Kraken (line detection) + PARSeq (line-level recognition)
+- **Advantages**:
+  - Bypasses word segmentation errors
+  - Leverages sentence-level context (critical for punctuation, ambiguous characters)
+  - Handles multi-column layouts naturally
+  - Eliminates cascading errors from detection pipeline
+- **Dataset Contribution**: 251 English page images with line-level annotations (first public dataset of this type)
+- **Code/Models**: https://nishitanand.github.io/line-level-ocr-website
+
+**Implications for Kanji**:
+
+- **Could enhance sentence-level recognition** of Kanji in historical documents
+- **Better punctuation handling** (critical in Japanese where punctuation varies)
+- **Improved context usage** for disambiguating similar-looking Kanji characters
+- **Efficiency gain** valuable for real-time handwritten Kanji recognition
+
+---
+
+### Edge Deployment and LVLM vs Traditional OCR Comparison
+
+**E-ARMOR: Edge case Assessment and Review of Multilingual OCR** (September 2025)
+
+- **Publication**: arXiv:2509.03615v1
+- **Comprehensive Comparison**: 5 LVLMs vs 2 traditional OCR systems
+- **Benchmark Details**:
+  - 54 languages, doubly hand-annotated dataset
+  - Multilingual test set (English 80%+, Chinese, Japanese, Korean, Arabic, and others)
+  - Real-world edge deployment conditions
+- **Key Finding**: Traditional optimized OCR still superior for edge deployment
+  - **Sprinklr-Edge-OCR** (lightweight traditional system):
+    - F1 Score: 0.4570 (highest among all models)
+    - Inference time: 0.17 seconds/image
+    - Peak memory: 1.97 GiB
+    - Cost: $0.006 per 1,000 images
+  - **Qwen-VL** (LVLM):
+    - Precision: 0.5426 (highest precision)
+    - Inference time: 5.83 seconds/image
+    - Peak memory: 12.9 GiB
+    - Cost: $0.85 per 1,000 images
+  - **CPU-Only Deployment**: Sprinklr-Edge-OCR 15.9x faster and 12.1x less memory than Qwen-VL
+- **Evaluated Models**:
+  - LVLMs: InternVL, Qwen-VL, GOT OCR 2.0, LLaMA-3.2-11B-Vision, MiniCPM-V-2.6
+  - Traditional: Sprinklr-Edge-OCR, SuryaOCR
+- **Metric Innovation**: LLM-as-judge (Qwen-3 8B) for semantic similarity evaluation
+
+**Insights for Kanji Recognition**:
+
+- **Deployment trade-offs**: Lightweight models sufficient for production Kanji recognition
+- **Edge feasibility**: Real-time Kanji recognition achievable on resource-constrained devices
+- **Multilingual robustness**: Traditional pipelines handle diverse scripts effectively (including CJK)
+- **Cost efficiency**: Lightweight models more economical for large-scale deployment
+
+---
+
+### Supporting Evidence: General OCR Improvements (2025)
+
+**General OCR Trends Observed**:
+
+1. **Line-Level Recognition** becoming standard
+   - Outperforms word-level approaches on complex documents
+   - Better language model integration through sentence context
+
+2. **LLM Integration Patterns**:
+   - Chain-of-thought reasoning improves interpretability
+   - Multi-task learning (answer + reasoning) beneficial
+   - Vision-language alignment critical for character understanding
+
+3. **Edge Deployment Evolution**:
+   - Traditional pipelines continue to excel in resource-constrained settings
+   - Quantization (4-bit, 8-bit) making LVLMs more deployable
+   - Hybrid approaches showing promise (combining strengths of both)
+
+4. **Multilingual and Multi-Script Progress**:
+   - Event cameras handling challenging lighting conditions
+   - Character-level vs line-level vs document-level trade-offs being explored
+   - CJK script recognition increasingly prioritized in benchmarks
+
+---
+
+## New Kanji-Specific Papers (Not Yet in Document)
+
+### Japanese Kanji Learning and Recognition
+
+**Hashigo: A Next Generation Sketch Interactive System for Japanese Kanji** (April 2025)
+
+- **Publication**: arXiv:2504.13940v1
+- **Authors**: Paul Taele, Tracy Hammond (Rice University)
+- **Focus**: Educational system for Kanji handwriting with feedback on both visual structure AND written technique
+- **Key Innovation**: Achieves human instructor-level critique on:
+  - Visual structure (character correctness)
+  - Written technique (stroke order and pressure)
+- **Application**: Addresses critical need for automated feedback on Kanji writing style to prevent bad learning habits
+- **Relevance**: Complements recognition by adding feedback component; useful for teacher-facing applications of Tsujimoto
+- **Code/Data**: GitHub repository available
+
+**Significance for Tsujimoto**: This represents recognition + feedback loop, which could inform interactive Kanji learning features.
+
+---
+
+### Historical Kanji and Kuzushiji Recognition
+
+**DKDS: A Benchmark Dataset of Degraded Kuzushiji Documents with Seals for Detection and Binarization** (November 2025)
+
+- **Publication**: arXiv:2511.09117v2
+- **Authors**: Rui-Yang Ju, Kohei Yamashita, Hirotaka Kameko, Shinsuke Mori (University of Tsukuba)
+- **Focus**: Historical Japanese cursive script (kuzushiji) with document degradation
+- **Dataset Details**:
+  - First benchmark specifically for degraded historical Kuzushiji documents
+  - Includes realistic challenges: document degradation, seals/stamps, noise
+  - Created with assistance of trained Kuzushiji experts
+  - Addresses gap in existing datasets (which only focus on clean documents)
+- **Two Benchmark Tracks**:
+  1. Text and seal detection (YOLO baseline results provided)
+  2. Document binarization (GAN and cGAN baselines)
+- **Challenges Identified**:
+  - Handling document degradation (age, water damage, stains)
+  - Removing/handling seals and stamps
+  - Binarization of low-contrast historical documents
+- **Code/Models**: Dataset and implementation available at https://ruiyangju.github.io/DKDS
+- **Baseline Methods**: YOLO detection models, traditional binarization, GANs, conditional GANs
+
+**Relevance to Tsujimoto**:
+
+- **Historical character focus**: While Tsujimoto focuses on modern Kanji, kuzushiji techniques applicable to any historical documents
+- **Degradation handling**: Methods for binarization and preprocessing directly transferable
+- **Expert annotation**: Demonstrates importance of expert validation (similar to MegaHan97K approach)
+- **Multi-stage approach**: Detection → Binarization → Recognition pipeline structure
+- **Japanese-specific**: Uses Japanese experts, understands kuzushiji unique challenges
+
+**Potential Cross-Application**:
+
+- Could adapt binarization techniques for handwritten Kanji preprocessing
+- Seal detection could be modified for watermark/annotation removal
+- Expert validation pipeline provides model for quality assurance
+
+---
+
+## 15. Project Implications for Tsujimoto
+
+### Architecture Recommendations Update (January 2026)
+
+Based on developments Aug 2025 - Jan 2026:
+
+**Current Implementation Status** ✅
+
+- HierCode: Production-ready (March 2024 approach)
+- Hi-GITA: Has more recent advances but similar architecture principles
+- RNN/CNN hybrids: Useful as baselines, consider line-level variants
+- Quantization: Validates lightweight approach for deployment
+
+**New Directions to Explore**:
+
+1. **Line-Level Recognition for Kanji**
+   - Apply PARSeq-like architecture to sentence-level Kanji recognition
+   - Leverage Japanese punctuation and grammar for context
+   - Combine with Hi-GITA's multi-modal alignment
+
+2. **Event-Camera Compatible Features**
+   - ESTR-CoT approach shows temporal reasoning valuable
+   - Consider stroke-order as temporal information
+   - Useful for handwritten Kanji with temporal stroke data
+
+3. **Hybrid Edge-Cloud Strategy**
+   - Lightweight model for edge (Sprinklr-Edge-OCR principles)
+   - Fallback to Hi-GITA for uncertain/rare characters
+   - Cost-effective for real-world deployment
+
+4. **Reasoning-Augmented Recognition**
+   - Adopt chain-of-thought for ambiguous Kanji
+   - Visual disambiguation (similar-looking characters)
+   - Semantic context from surrounding text
+
+---
+
 ## 13. References Update
 
-### Recent Archi Papers (2024-2025)
+### Recent Archive Papers (2024-2025)
+
+#### Chinese/Kanji Character Recognition
 
 - **Hi-GITA** (May 2025): https://arxiv.org/abs/2505.24837v1
 - **MegaHan97K** (June 2025): https://arxiv.org/abs/2506.04807v1
-- **MCCD** (July 2025): https://arxiv.org/abs/2507.06948v1
 - **HierCode** (March 2024): https://arxiv.org/abs/2403.13761v1
+- **MCCD** (July 2025): https://arxiv.org/abs/2507.06948v1
+
+#### General OCR and Text Recognition
+
+- **ESTR-CoT** (July 2025): https://arxiv.org/abs/2507.02200v1
+- **Line-Level OCR** (August 2025): https://arxiv.org/abs/2508.21693v1
+- **E-ARMOR** (September 2025): https://arxiv.org/abs/2509.03615v1
+
+#### Japanese-Specific Recognition
+
+- **Hashigo: Kanji Sketch Interactive System** (April 2025): https://arxiv.org/abs/2504.13940v1
+- **DKDS: Degraded Kuzushiji Dataset** (November 2025): https://arxiv.org/abs/2511.09117v2
 
 ### Research Papers Cited (2018-2023)
 
