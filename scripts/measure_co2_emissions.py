@@ -7,16 +7,20 @@ This script measures and tracks CO2 emissions during model training and inferenc
 """
 
 import json
-import logging
 import platform
+import sys
 from datetime import datetime
 from pathlib import Path
 
 import psutil
 import torch
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 # Try to import CodeCarbon for CO2 tracking
 try:

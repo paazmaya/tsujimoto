@@ -21,7 +21,7 @@ Configuration parameters are documented inline.
 
 import argparse
 import json
-import logging
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, Tuple
@@ -31,18 +31,24 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from checkpoint_manager import setup_checkpoint_arguments
-from optimization_config import (
-    RNNConfig,
-    get_dataset_directory,
-    get_optimizer,
-    prepare_dataset_and_loaders,
-    verify_and_setup_gpu,
-)
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-logger = logging.getLogger(__name__)
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import (
+    RNNConfig,
+    get_dataset_directory,
+    get_optimizer,
+    get_scheduler,
+    prepare_dataset_and_loaders,
+    setup_checkpoint_arguments,
+    setup_logger,
+    verify_and_setup_gpu,
+)
+
+logger = setup_logger(__name__)
 
 
 # ============================================================================
@@ -708,19 +714,7 @@ class RNNTrainer:
 
         # Setup optimizer and scheduler using unified functions
         optimizer = get_optimizer(self.model, config)
-
-        # Setup scheduler based on config
-        if config.scheduler == "cosine":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, T_max=config.scheduler_T_max
-            )
-        elif config.scheduler == "step":
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
-        else:
-            # Fallback to ReduceLROnPlateau for backward compatibility
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="max", factor=0.5, patience=5
-            )
+        scheduler = get_scheduler(optimizer, config)
 
         criterion = nn.CrossEntropyLoss()
 
@@ -878,12 +872,6 @@ def main():
     setup_checkpoint_arguments(parser, "rnn")
 
     args = parser.parse_args()
-
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
 
     # Setup device
     device = verify_and_setup_gpu()

@@ -23,16 +23,21 @@ Based on: Hi-GITA paper (2505.24837v1)
 Date: November 17, 2025
 """
 
-import logging
 import math
+import sys
+from pathlib import Path
 from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class StrokeEncoder(nn.Module):

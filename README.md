@@ -170,6 +170,22 @@ uv run python scripts/export_quantized_to_onnx.py --model-path training/hiercode
 uv run python scripts/export_4bit_quantized_onnx.py --model-path training/hiercode/quantized_hiercode_int8.pth --verify
 ```
 
+| Parameter          | Type  | Default                         | Notes                       |
+| ------------------ | ----- | ------------------------------- | --------------------------- |
+| `--epochs`         | int   | 30                              | Training epochs             |
+| `--batch-size`     | int   | 64\*                            | \*ViT=256, Hi-GITA=32       |
+| `--learning-rate`  | float | 0.001\*                         | \*ViT=0.0005                |
+| `--image-size`     | int   | 64                              | Input dimensions            |
+| `--num-classes`    | int   | 43,528                          | Auto-detected from metadata |
+| `--sample-limit`   | int   | None                            | Optional: limit samples     |
+| `--optimizer`      | str   | adamw                           | adamw or sgd                |
+| `--scheduler`      | str   | cosine                          | cosine or step              |
+| `--weight-decay`   | float | 1e-4                            | L2 regularization           |
+| `--checkpoint-dir` | str   | training/{approach}/checkpoints | Checkpoint directory        |
+| `--resume-from`    | str   | None                            | Resume from checkpoint      |
+| `--no-checkpoint`  | bool  | False                           | Skip checkpoint loading     |
+| `--keep-last-n`    | int   | 5                               | Checkpoints to retain       |
+
 **Result models**:
 
 | File                                                                  | Size    | Format       | Use            |
@@ -185,8 +201,6 @@ uv run python scripts/export_4bit_quantized_onnx.py --model-path training/hierco
 Quantizes trained models to 8-bit integers for ~4x size reduction with minimal accuracy loss (<1%).
 
 #### Basic Usage (All Model Types)
-
-training/hiercode_higita/checkpoints/best_hiercode_higita.pth
 
 ```ps1
 # Quantize any trained model (HierCode, CNN, RNN, QAT, ViT, etc.)

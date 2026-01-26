@@ -7,15 +7,21 @@ Produces ultra-lightweight model: 1.75 MB (vs 9.56 MB original)
 
 import argparse
 import json
-import logging
+import sys
 from pathlib import Path
 
 import torch
-from optimization_config import HierCodeConfig
-from train_hiercode import HierCodeClassifier
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import HierCodeConfig, setup_logger
+
+logger = setup_logger(__name__)
+
+# Add scripts to path for imports
+sys.path.append(str(Path(__file__).parent))
+from train_hiercode import HierCodeClassifier  # noqa: E402
 
 
 def export_quantized_int8_to_quantized_int8_onnx(

@@ -6,17 +6,22 @@ Converts PyTorch INT8 model to ultra-lightweight 4-bit ONNX for edge deployment
 
 import argparse
 import json
-import logging
+import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
 import torch
-from model_utils import generate_export_path, infer_model_type
-from optimization_config import HierCodeConfig
-from train_hiercode import HierCodeClassifier
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import HierCodeConfig, generate_export_path, infer_model_type, setup_logger
+
+logger = setup_logger(__name__)
+
+# Add scripts to path for imports
+sys.path.append(str(Path(__file__).parent))
+from train_hiercode import HierCodeClassifier  # noqa: E402
 
 
 def quantize_onnx_4bit(

@@ -5,23 +5,25 @@ Demonstrates how to load and use the SafeTensors model for kanji recognition
 """
 
 import json
-import logging
+import sys
+from pathlib import Path
 
 import numpy as np
 import torch
 from PIL import Image
 from safetensors.torch import load_file
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 try:
     from train_cnn_model import LightweightKanjiNet
 except ImportError:
     # Handle case when running from scripts directory
-    import sys
-    from pathlib import Path
-
     sys.path.append(str(Path(__file__).parent))
     from train_cnn_model import LightweightKanjiNet
 

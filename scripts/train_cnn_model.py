@@ -12,28 +12,32 @@ Features:
 
 import argparse
 import json
-import logging
 import sys
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from checkpoint_manager import CheckpointManager, setup_checkpoint_arguments
-from optimization_config import (
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
+
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import (
+    CheckpointManager,
     CNNConfig,
     get_dataset_directory,
     get_optimizer,
     get_scheduler,
     prepare_dataset_and_loaders,
+    setup_checkpoint_arguments,
+    setup_logger,
     verify_and_setup_gpu,
 )
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class ETL9GDataset(Dataset):
@@ -376,29 +380,35 @@ class ProgressiveTrainer:
         # =========================
         # OPTIMIZER ALGORITHM - ADJUSTABLE
         # =========================
-        # Current: AdamW with weight_decay=1e-4, lr=0.001
-        # Purpose: Adam with decoupled weight decay, better generalization than Adam
-        # Benefits: Adaptive learning rates per parameter + L2 regularization
-        optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate, weight_decay=1e-4)
-
-        # Alternative optimizers (commented out):
-        # SGD with momentum: optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
-        # Standard Adam: optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
-        # RMSprop: optim.RMSprop(model.parameters(), lr=0.001, weight_decay=1e-4)
+        # Uses factory function from src.lib
+        # Creates AdamW optimizer with learning_rate and weight_decay
+        optimizer = get_optimizer(
+            self.model,
+            type(
+                "Config",
+                (),
+                {"learning_rate": learning_rate, "optimizer": "adamw", "weight_decay": 1e-4},
+            )(),
+        )
 
         # =========================
         # LEARNING RATE SCHEDULER - ADJUSTABLE
         # =========================
-        # Current: CosineAnnealingLR with T_max=epochs, eta_min=1e-6
-        # Purpose: Smooth learning rate decay from initial LR to minimum LR
-        # Pattern: Cosine curve, allows model to fine-tune in later epochs
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
-
-        # Alternative schedulers (commented out):
-        # Step decay: optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
-        # Exponential decay: optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
-        # Reduce on plateau: optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
-        # Warmup + cosine: Custom warmup for first few epochs then cosine annealing
+        # Uses factory function from src.lib
+        # Creates CosineAnnealingLR scheduler with T_max=epochs, eta_min=1e-6
+        scheduler = get_scheduler(
+            optimizer,
+            type(
+                "Config",
+                (),
+                {
+                    "epochs": epochs,
+                    "scheduler": "cosine",
+                    "scheduler_t_max": epochs,
+                    "scheduler_eta_min": 1e-6,
+                },
+            )(),
+        )
 
         # =========================
         # EARLY STOPPING PARAMETERS - ADJUSTABLE

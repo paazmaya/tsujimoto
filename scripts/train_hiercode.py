@@ -16,8 +16,6 @@ For more info: See HIERCODE_DISCOVERY.md and GITHUB_IMPLEMENTATION_REFERENCES.md
 """
 
 import argparse
-import json
-import logging
 import sys
 from pathlib import Path
 from typing import Tuple
@@ -25,21 +23,30 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
-from checkpoint_manager import CheckpointManager, setup_checkpoint_arguments
-from optimization_config import (
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import (
+    CheckpointManager,
     HierCodeConfig,
     create_data_loaders,
     get_dataset_directory,
     get_optimizer,
     get_scheduler,
+    load_best_model_for_testing,
     load_chunked_dataset,
+    save_best_model,
     save_config,
+    save_training_results,
+    setup_checkpoint_arguments,
+    setup_logger,
     verify_and_setup_gpu,
 )
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 # ============================================================================
 # HIERCODE COMPONENTS
@@ -693,10 +700,8 @@ Examples:
             f"Val Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%"
         )
 
-        if val_acc > best_val_acc:
+        if save_best_model(model, val_acc, best_val_acc, best_model_path):
             best_val_acc = val_acc
-            torch.save(model.state_dict(), best_model_path)
-            logger.info(f"  ✓ Saved best model (acc: {val_acc:.2f}%)")
 
         # Save checkpoint after each epoch for resuming later
         checkpoint_manager.save_checkpoint(
@@ -705,25 +710,19 @@ Examples:
 
     # ========== TESTING ==========
     logger.info("🧪 TESTING...")
-    model.load_state_dict(torch.load(best_model_path, map_location=device))
+    load_best_model_for_testing(model, best_model_path, device)
     test_loss, test_acc = trainer.validate(test_loader, criterion)
     logger.info(f"Test Loss: {test_loss:.4f}, Acc: {test_acc:.2f}%")
 
     # ========== RESULTS ==========
-    results = {
-        "config": config.to_dict(),
-        "best_val_acc": float(best_val_acc),
-        "test_acc": float(test_acc),
-        "test_loss": float(test_loss),
-        "history": trainer.history,
-    }
-
-    results_path = Path(config.results_dir) / "hiercode_results.json"
-    Path(config.results_dir).mkdir(parents=True, exist_ok=True)
-    with open(results_path, "w") as f:
-        json.dump(results, f, indent=2)
-
-    logger.info(f"✓ Results saved to {results_path}")
+    save_training_results(
+        config,
+        best_val_acc,
+        test_acc,
+        test_loss,
+        trainer.history,
+        Path(config.results_dir) / "hiercode_results.json",
+    )
 
     # ========== CREATE CHARACTER MAPPING ==========
     logger.info("\n📊 Creating character mapping for inference...")

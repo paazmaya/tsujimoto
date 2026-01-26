@@ -1,37 +1,15 @@
-#!/usr/bin/env python3
 """
-Checkpoint Management Utility for Training Scripts
+Checkpoint management utilities for training scripts.
 
 Provides unified checkpoint handling with automatic resume from latest checkpoint.
-Each training approach (cnn, rnn, hiercode, vit, qat) stores checkpoints and results
-in dedicated training/{approach_name}/ folders with organized structure:
-- training/{approach_name}/checkpoints/  - Training checkpoints
-- training/{approach_name}/results/      - Training results and metrics
-- training/{approach_name}/config/       - Configuration files
-
-Usage:
-    from checkpoint_manager import CheckpointManager
-
-    # Auto-detect and resume from latest checkpoint if it exists
-    manager = CheckpointManager("training/cnn/checkpoints", approach_name="cnn")
-    checkpoint_data, start_epoch = manager.find_and_load_latest_checkpoint(model, optimizer, scheduler)
-
-    if checkpoint_data:
-        logger.info(f"Resumed from epoch {start_epoch}")
-    else:
-        logger.info("Starting fresh training")
 """
 
 import logging
 import re
-import warnings
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import torch
-
-# Suppress PyTorch's TypedStorage deprecation warning (internal, not in user code)
-warnings.filterwarnings("ignore", category=UserWarning, message=".*TypedStorage.*")
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +115,6 @@ class CheckpointManager:
         if not self.approach_dir.exists():
             return None
 
-        # Look for checkpoint files with epoch numbers
         def extract_epoch_num(path):
             match = re.search(r"_(\d+)", path.name)
             return int(match.group(1)) if match else -1
@@ -165,8 +142,8 @@ class CheckpointManager:
         """
         Unified checkpoint loading for training scripts (DRY pattern).
 
-        Handles both auto-detection and explicit resume paths with consistent error handling,
-        printing, and return values. Eliminates code duplication across training scripts.
+        Handles both auto-detection and explicit resume paths with consistent
+        error handling, printing, and return values.
 
         Args:
             model: Model to load into
@@ -180,13 +157,6 @@ class CheckpointManager:
             Tuple of (start_epoch, best_metrics_dict)
             - start_epoch: Epoch to resume from (0 if starting fresh)
             - best_metrics_dict: Best metrics found in checkpoint, or empty dict
-
-        Example:
-            # Replace 30+ lines of checkpoint code with one call:
-            start_epoch, best_metrics = checkpoint_manager.load_checkpoint_for_training(
-                model, optimizer, scheduler, device, resume_from=args.resume_from,
-                args_no_checkpoint=args.no_checkpoint
-            )
         """
         start_epoch = 0
         best_metrics = {}
@@ -263,8 +233,6 @@ class CheckpointManager:
 
         Returns:
             Tuple of (checkpoint_data or None, start_epoch)
-            - If checkpoint found: (checkpoint_dict, next_epoch)
-            - If no checkpoint: (None, 0)
         """
         latest_checkpoint = self.find_latest_checkpoint()
 
@@ -278,11 +246,8 @@ class CheckpointManager:
         try:
             epoch, metrics = self.load_checkpoint(latest_checkpoint, model, optimizer, scheduler)
             start_epoch = epoch + 1
-
             logger.info(f"📍 Will continue from epoch {start_epoch}")
-
             return {"epoch": epoch, "metrics": metrics}, start_epoch
-
         except Exception as e:
             logger.warning(f"⚠️  Failed to load checkpoint: {e}")
             logger.info("   Starting fresh training...")

@@ -6,23 +6,23 @@ Provides secure, fast loading format with embedded metadata.
 
 import argparse
 import json
-import logging
+import sys
 from pathlib import Path
 
 import torch
-from model_utils import generate_export_path, infer_model_type
 from safetensors.torch import save_file
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import generate_export_path, infer_model_type, setup_logger
+
+logger = setup_logger(__name__)
 
 try:
     from train_cnn_model import LightweightKanjiNet
 except ImportError:
     # Handle case when running from scripts directory
-    import sys
-    from pathlib import Path
-
     sys.path.append(str(Path(__file__).parent))
     from train_cnn_model import LightweightKanjiNet
 

@@ -22,7 +22,6 @@ Date: November 17, 2025
 
 import argparse
 import json
-import logging
 import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -31,16 +30,24 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from checkpoint_manager import CheckpointManager, setup_checkpoint_arguments
-from optimization_config import (
-    get_dataset_directory,
-    prepare_dataset_and_loaders,
-    verify_and_setup_gpu,
-)
-from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, TensorDataset
 
-# Add scripts to path
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import (
+    CheckpointManager,
+    get_dataset_directory,
+    get_optimizer,
+    get_scheduler,
+    prepare_dataset_and_loaders,
+    save_best_model,
+    setup_checkpoint_arguments,
+    setup_logger,
+    verify_and_setup_gpu,
+)
+
+# Add scripts to path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from hiercode_higita_enhancement import (
@@ -49,7 +56,7 @@ from hiercode_higita_enhancement import (
     MultiGranularityTextEncoder,
 )
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class HiGITAConfig:
@@ -318,17 +325,16 @@ def main():
     text_encoder = MultiGranularityTextEncoder().to(device)
     contrastive_loss_fn = FineGrainedContrastiveLoss()
 
-    # Optimizer and scheduler
-    optimizer = optim.Adam(
-        model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
-    )
-    scheduler = CosineAnnealingLR(optimizer, T_max=config.epochs, eta_min=1e-6)
+    # Optimizer and scheduler using factory functions
+    optimizer = get_optimizer(model, config)
+    scheduler = get_scheduler(optimizer, config)
 
     # ========== INITIALIZE CHECKPOINT MANAGER ==========
     checkpoint_manager = CheckpointManager(config.checkpoint_dir, "hiercode_higita")
 
     # Training loop
     best_val_acc = 0
+    best_path = Path(config.checkpoint_dir) / "best_hiercode_higita.pth"
     history = []
 
     # Resume from checkpoint using unified DRY method
@@ -385,11 +391,10 @@ def main():
         )
 
         # Save best model
-        if val_metrics["accuracy"] > best_val_acc:
+        if save_best_model(
+            model, val_metrics["accuracy"], best_val_acc, best_path
+        ):
             best_val_acc = val_metrics["accuracy"]
-            best_path = Path(config.checkpoint_dir) / "best_hiercode_higita.pth"
-            torch.save(model.state_dict(), best_path)
-            logger.info(f"💾 Best model saved to {best_path} (Acc: {best_val_acc:.2f}%)")
 
     # Save final history
     history_path = Path(config.checkpoint_dir) / "training_history_higita.json"

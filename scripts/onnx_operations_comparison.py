@@ -3,13 +3,18 @@
 Real ONNX Operation Comparison - Show actual operations from our models
 """
 
-import logging
 import os
+import sys
+from pathlib import Path
 
 import onnx
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def show_real_onnx_operations():

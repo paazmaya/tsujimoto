@@ -6,14 +6,18 @@ Use this as a reference for updating your existing training scripts.
 """
 
 import json
-import logging
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def load_etl_dataset(

@@ -17,14 +17,19 @@ Usage:
 
 import argparse
 import json
-import logging
+
+# Add parent directory to path to import src/lib
+import sys
 from pathlib import Path
 from typing import Optional
 
 import matplotlib.pyplot as plt
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+sys.path.insert(0, str(Path(__file__).parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 # Soft, muted colors with high contrast (WCAG AA compliant)
 # These maintain a "pastel-like" aesthetic while ensuring readability

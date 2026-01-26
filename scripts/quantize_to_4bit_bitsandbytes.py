@@ -9,7 +9,7 @@ Reference: https://huggingface.co/docs/bitsandbytes/en/reference/nn/linear4bit
 
 import argparse
 import json
-import logging
+import sys
 import warnings
 from pathlib import Path
 from typing import Literal, Tuple
@@ -17,14 +17,19 @@ from typing import Literal, Tuple
 import torch
 import torch.nn as nn
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger, verify_and_setup_gpu
+
+logger = setup_logger(__name__)
 
 # Suppress PyTorch's TypedStorage deprecation warning (internal, not in user code)
 warnings.filterwarnings("ignore", category=UserWarning, message=".*TypedStorage.*")
 
+# Add scripts to path for imports
+sys.path.append(str(Path(__file__).parent))
 from hiercode_higita_enhancement import HierCodeWithHiGITA  # noqa: E402
-from optimization_config import verify_and_setup_gpu  # noqa: E402
 from train_cnn_model import LightweightKanjiNet  # noqa: E402
 from train_hiercode import HierCodeClassifier  # noqa: E402
 from train_qat import QuantizableLightweightKanjiNet  # noqa: E402

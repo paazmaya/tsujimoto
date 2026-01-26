@@ -4,14 +4,18 @@ Quick test script to verify ETL9G data preparation and training setup
 """
 
 import json
-import logging
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def analyze_etl9g_data(data_dir):

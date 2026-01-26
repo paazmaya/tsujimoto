@@ -6,15 +6,19 @@ Converts PyTorch model to ONNX for cross-platform deployment
 
 import argparse
 import json
-import logging
+import sys
 from pathlib import Path
 
 import torch
-from optimization_config import HierCodeConfig
+
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from train_hiercode import HierCodeClassifier
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+from src.lib import HierCodeConfig, setup_logger
+
+logger = setup_logger(__name__)
 
 
 def export_to_onnx(

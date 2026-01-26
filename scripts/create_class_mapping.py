@@ -19,16 +19,16 @@ Date: November 18, 2025
 
 import argparse
 import json
-import logging
 import sys
 from pathlib import Path
 from typing import Dict, Tuple
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def jis_to_unicode(jis_code_int: int) -> str:

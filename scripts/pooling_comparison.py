@@ -3,13 +3,18 @@
 GlobalAveragePool vs AveragePool - Demonstration of the differences
 """
 
-import logging
+import sys
+from pathlib import Path
 
 import torch
 import torch.nn as nn
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")  # Simple format - just the message
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def demonstrate_pooling_differences():

@@ -5,14 +5,19 @@ Configuration module for HierCode + Hi-GITA training
 Extends optimization_config.py with Hi-GITA specific settings.
 """
 
-import logging
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict
 
 import torch
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 
 @dataclass

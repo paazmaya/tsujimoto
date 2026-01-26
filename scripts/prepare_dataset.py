@@ -14,8 +14,8 @@ Usage:
 
 import argparse
 import json
-import logging
 import struct
+import sys
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
@@ -25,8 +25,12 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Add parent directory to path to import src/lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.lib import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class ETLFormatHandler(ABC):
