@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Pre-flight check for ETL9G training setup
-Run this before starting actual training
+Pre-flight check for Tsujimoto kanji recognition training setup.
+Verifies CUDA, dependencies, dataset availability, and system resources.
+Run this before starting actual training.
 """
 
 import importlib.util
@@ -111,32 +112,42 @@ def check_requirements():
 
 
 def check_data_files():
-    """Check if ETL9G data files are available"""
+    """Check if ETL dataset files are available (combined or individual)"""
 
-    etl9g_dir = Path("ETL9G")
-    if not etl9g_dir.exists():
-        logger.error("✗ ETL9G directory not found")
+    dataset_dir = Path("dataset")
+
+    # Check priority: combined_all_etl → etl9g → etl8g → etl7 → etl6
+    dataset_priority = [
+        "combined_all_etl",
+        "etl9g",
+        "etl8g",
+        "etl7",
+        "etl6",
+    ]
+
+    found_dataset = None
+    found_path = None
+
+    for dataset_name in dataset_priority:
+        dataset_path = dataset_dir / dataset_name
+        if dataset_path.exists():
+            found_dataset = dataset_name
+            found_path = dataset_path
+            break
+
+    if found_dataset is None:
+        logger.error("✗ No ETL dataset found (checked: %s)", ", ".join(dataset_priority))
         return False
 
-    # Check for ETL9G files
-    etl_files = list(etl9g_dir.glob("ETL9G_*"))
-    etl_files = [f for f in etl_files if f.is_file() and "INFO" not in f.name]
+    logger.info("✓ Found dataset: %s", found_dataset)
 
-    if len(etl_files) < 50:
-        logger.warning("✗ Expected ~50 ETL9G files, found %d", len(etl_files))
+    # Check metadata file
+    metadata_file = found_path / "chunk_info.json"
+    if not metadata_file.exists():
+        logger.warning("✗ chunk_info.json not found in %s", found_dataset)
         return False
 
-    logger.info("✓ Found %d ETL9G data files", len(etl_files))
-
-    # Check file sizes (should be around 99MB each)
-    sample_file = etl_files[0]
-    file_size_mb = sample_file.stat().st_size / (1024 * 1024)
-
-    if file_size_mb < 90 or file_size_mb > 110:
-        logger.warning("✗ Sample file size %.1f MB (expected ~99 MB)", file_size_mb)
-        return False
-
-    logger.debug("Sample file size: %.1f MB", file_size_mb)
+    logger.debug("✓ Found metadata: %s", metadata_file.name)
     return True
 
 
@@ -170,17 +181,21 @@ def check_system_resources():
 
 
 def check_training_scripts():
-    """Check if all training scripts are present"""
+    """Check if main training scripts are present"""
 
-    required_files = [
-        "scripts/prepare_etl9g_dataset.py",
+    required_scripts = [
         "scripts/train_cnn_model.py",
-        "scripts/test_etl9g_setup.py",
+        "scripts/train_hiercode.py",
+        "scripts/train_qat.py",
+        "scripts/train_radical_rnn.py",
+        "scripts/train_vit.py",
+        "scripts/prepare_dataset.py",
+        "scripts/quantize_model.py",
     ]
 
     all_present = True
 
-    for filename in required_files:
+    for filename in required_scripts:
         if Path(filename).exists():
             logger.debug("  ✓ %s", filename)
         else:
@@ -188,7 +203,7 @@ def check_training_scripts():
             all_present = False
 
     if all_present:
-        logger.info("✓ All training scripts present")
+        logger.info("✓ All main training scripts present")
     else:
         logger.error("✗ Some training scripts missing")
 
@@ -196,7 +211,7 @@ def check_training_scripts():
 
 
 def estimate_training_time():
-    """Estimate training time based on system"""
+    """Estimate training time based on system and dataset"""
 
     try:
         import torch
@@ -204,10 +219,22 @@ def estimate_training_time():
         if torch.cuda.is_available():
             gpu_name = torch.cuda.get_device_name(0)
             logger.info("Training on: %s", gpu_name)
-            logger.info("Estimated time for 30 epochs: 2-4 hours")
+
+            # Dataset-aware estimates
+            dataset_dir = Path("dataset")
+            if (dataset_dir / "combined_all_etl").exists():
+                logger.info("With combined_all_etl (934K samples):")
+                logger.info("  - CNN: ~2-3 hours for 30 epochs")
+                logger.info("  - RNN: ~4-6 hours for 30 epochs")
+                logger.info("  - HierCode: ~3-4 hours for 30 epochs")
+            else:
+                logger.info("With ETL9G (607K samples):")
+                logger.info("  - CNN: ~1-2 hours for 30 epochs")
+                logger.info("  - RNN: ~2-3 hours for 30 epochs")
+                logger.info("  - HierCode: ~1.5-2.5 hours for 30 epochs")
         else:
-            logger.warning("Training on CPU (very slow, >10 hours for 30 epochs)")
-            logger.info("Recommended: Use GPU for practical training")
+            logger.warning("Training on CPU (very slow, >20 hours per approach)")
+            logger.info("Recommendation: Use GPU for practical training")
 
     except ImportError:
         logger.error("PyTorch not available for time estimation")
@@ -216,7 +243,7 @@ def estimate_training_time():
 def main():
     """Run all checks"""
 
-    logger.info("\n=== ETL9G Training Pre-Flight Check ===")
+    logger.info("\n=== Tsujimoto Kanji Recognition Pre-Flight Check ===")
     checks_passed = 0
     total_checks = 0
 
@@ -252,7 +279,7 @@ def main():
         checks_passed += 1
 
     # Training time estimate
-    logger.info("\nTraining time estimate:")
+    logger.info("\nTraining time estimates:")
     estimate_training_time()
 
     # Summary
@@ -260,6 +287,9 @@ def main():
     logger.info("Checks passed: %d/%d", checks_passed, total_checks)
     if checks_passed == total_checks:
         logger.info("✓ All checks passed! Ready to train.")
+        logger.info("\nNext steps:")
+        logger.info("  1. Prepare dataset: uv run python scripts/prepare_dataset.py")
+        logger.info("  2. Train model: uv run python scripts/train_cnn_model.py --data-dir dataset")
     else:
         logger.warning("⚠ Some checks failed. Review above for details.")
 

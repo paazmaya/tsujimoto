@@ -15,7 +15,7 @@ from typing import Any, Dict
 
 import torch
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def save_best_model(
@@ -120,9 +120,7 @@ def save_training_history(
     history_dict["val_acc"].append(val_acc)
 
 
-def load_best_model_for_testing(
-    model, best_model_path: Path, device: str = "cpu"
-) -> None:
+def load_best_model_for_testing(model, best_model_path: Path, device: str = "cpu") -> None:
     """
     Load best saved model for testing.
 

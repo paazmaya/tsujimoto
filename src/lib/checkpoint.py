@@ -11,13 +11,13 @@ from typing import Dict, Optional, Tuple
 
 import torch
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class CheckpointManager:
     """Manages training checkpoints with automatic resume capabilities."""
 
-    def __init__(self, checkpoint_dir: str, approach_name: str):
+    def __init__(self, checkpoint_dir: str, approach_name: str) -> None:
         """
         Initialize checkpoint manager.
 
@@ -26,7 +26,7 @@ class CheckpointManager:
             approach_name: Training approach name (e.g., "cnn", "rnn", "hiercode", "vit", "qat")
         """
         self.approach_dir = Path(checkpoint_dir)
-        self.approach_name = approach_name
+        self.approach_name: str = approach_name
         self.approach_dir.mkdir(parents=True, exist_ok=True)
 
     def save_checkpoint(
@@ -61,13 +61,13 @@ class CheckpointManager:
         }
 
         # Regular checkpoint
-        checkpoint_path = self.approach_dir / f"checkpoint_epoch_{epoch:03d}.pt"
+        checkpoint_path: Path = self.approach_dir / f"checkpoint_epoch_{epoch:03d}.pt"
         torch.save(checkpoint_data, checkpoint_path)
         logger.info(f"  ✓ Checkpoint saved: {checkpoint_path}")
 
         # Best checkpoint (optional)
         if is_best:
-            best_path = self.approach_dir / "checkpoint_best.pt"
+            best_path: Path = self.approach_dir / "checkpoint_best.pt"
             torch.save(checkpoint_data, best_path)
             logger.info(f"  ✓ Best checkpoint saved: {best_path}")
 
@@ -115,11 +115,11 @@ class CheckpointManager:
         if not self.approach_dir.exists():
             return None
 
-        def extract_epoch_num(path):
-            match = re.search(r"_(\d+)", path.name)
+        def extract_epoch_num(path) -> int:
+            match: re.Match[str] | None = re.search(r"_(\d+)", path.name)
             return int(match.group(1)) if match else -1
 
-        checkpoint_files = sorted(
+        checkpoint_files: list[Path] = sorted(
             self.approach_dir.glob("checkpoint_epoch_*.pt"),
             key=extract_epoch_num,
             reverse=True,
@@ -194,7 +194,7 @@ class CheckpointManager:
             return start_epoch, best_metrics
 
         # Case 2: Auto-detect latest checkpoint
-        latest_checkpoint = self.find_latest_checkpoint()
+        latest_checkpoint: Path | None = self.find_latest_checkpoint()
         if latest_checkpoint:
             logger.info(f"🔄 Auto-detected checkpoint: {latest_checkpoint.name}")
             try:
@@ -234,7 +234,7 @@ class CheckpointManager:
         Returns:
             Tuple of (checkpoint_data or None, start_epoch)
         """
-        latest_checkpoint = self.find_latest_checkpoint()
+        latest_checkpoint: Path | None = self.find_latest_checkpoint()
 
         if latest_checkpoint is None:
             logger.info(f"ℹ️  No checkpoint found for '{self.approach_name}' in {self.approach_dir}")
@@ -245,7 +245,7 @@ class CheckpointManager:
 
         try:
             epoch, metrics = self.load_checkpoint(latest_checkpoint, model, optimizer, scheduler)
-            start_epoch = epoch + 1
+            start_epoch: int = epoch + 1
             logger.info(f"📍 Will continue from epoch {start_epoch}")
             return {"epoch": epoch, "metrics": metrics}, start_epoch
         except Exception as e:
@@ -263,11 +263,11 @@ class CheckpointManager:
         if not self.approach_dir.exists():
             return []
 
-        def extract_epoch_num(path):
-            match = re.search(r"_(\d+)", path.name)
+        def extract_epoch_num(path) -> int:
+            match: re.Match[str] | None = re.search(r"_(\d+)", path.name)
             return int(match.group(1)) if match else -1
 
-        checkpoints = sorted(
+        checkpoints: list[Path] = sorted(
             self.approach_dir.glob("checkpoint_epoch_*.pt"),
             key=extract_epoch_num,
             reverse=True,
@@ -297,7 +297,7 @@ class CheckpointManager:
             Dictionary with checkpoint information
         """
         checkpoints = self.list_all_checkpoints()
-        best_checkpoint = self.approach_dir / "checkpoint_best.pt"
+        best_checkpoint: Path = self.approach_dir / "checkpoint_best.pt"
 
         info = {
             "approach_name": self.approach_name,

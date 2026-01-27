@@ -157,8 +157,11 @@ This project uses **uv** for fast, reliable Python dependency management.
 # Step 1: Train HierCode (30 epochs)
 uv run python scripts/train_hiercode.py --data-dir dataset --epochs 30 --checkpoint-dir training/hiercode/checkpoints
 
-# Step 2: Quantize to INT8
-uv run python scripts/quantize_model.py --model-path training/hiercode/hiercode_model_best.pth --calibrate --evaluate
+# Step 1b: Copy best checkpoint (finds highest validation accuracy automatically)
+uv run python scripts/copy_best_checkpoint.py --model-type hiercode
+
+# Step 2: Quantize to INT8 (dynamic quantization recommended)
+uv run python scripts/quantize_model.py --model-path training/hiercode/hiercode_model_best.pth --model-type hiercode
 
 # Step 3: Export to ONNX (float32)
 uv run python scripts/export_to_onnx_hiercode.py --model-path training/hiercode/hiercode_model_best.pth --verify
@@ -204,9 +207,11 @@ Quantizes trained models to 8-bit integers for ~4x size reduction with minimal a
 
 ```ps1
 # Quantize any trained model (HierCode, CNN, RNN, QAT, ViT, etc.)
-uv run python scripts/quantize_model.py --model-path training/hiercode_higita/checkpoints/best_hiercode_higita.pth --model-type hiercode-higita
+# IMPORTANT: Always specify --model-type to match your model!
+uv run python scripts/quantize_model.py --model-path training/hiercode_higita/best_hiercode_higita.pth --model-type hiercode-higita
 
 # Supported model types: hiercode, hiercode-higita, cnn, qat, rnn, radical-rnn, vit
+# Note: If --model-type is omitted, defaults to "hiercode" (may cause errors with other architectures)
 ```
 
 **Supports 4 additional RNN Architectures:**
@@ -252,8 +257,9 @@ uv run python scripts/quantize_model.py --model-path training/cnn/best_model.pth
 # Uses training data to compute optimal scale factors
 # Better accuracy preservation than static quantization
 # Requires dataset (auto-detected)
-# WARNING: Currently has compatibility issues with Hi-GITA model shape handling
-uv run python scripts/quantize_model.py --model-path training/hiercode/best_model.pth --model-type hiercode --calibrate
+# WARNING: Calibration has known compatibility issues with complex architectures (Hi-GITA)
+# Recommended for simpler models (CNN, RNN) only
+uv run python scripts/quantize_model.py --model-path training/cnn/best_model.pth --model-type cnn --calibrate
 ```
 
 **Evaluate Accuracy (Note: CPU-only due to PyTorch quantization backend)**

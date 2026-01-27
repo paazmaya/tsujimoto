@@ -33,6 +33,7 @@ def generate_chunk_metadata(data_dir="dataset"):
     # Dataset names to check
     dataset_names = ["etl1", "etl6", "etl7", "etl8g", "etl9g", "combined_all_etl"]
     generated_count = 0
+    existing_count = 0
 
     for dataset_name in dataset_names:
         dataset_dir = data_path / dataset_name
@@ -44,6 +45,7 @@ def generate_chunk_metadata(data_dir="dataset"):
 
         if chunk_info_path.exists():
             logger.info(f"✅ {dataset_name}: chunk_info.json already exists")
+            existing_count += 1
             continue
 
         # Find chunk files with pattern: {dataset_name}_chunk_XX.npz
@@ -68,11 +70,18 @@ def generate_chunk_metadata(data_dir="dataset"):
         generated_count += 1
 
     if generated_count == 0:
+        if existing_count > 0:
+            logger.info(f"✅ All datasets already have chunk_info.json ({existing_count} dataset(s))")
+            logger.info("   Your datasets are ready for training!")
+            return True
+        
         logger.warning("⚠️  No chunk metadata files were generated. No datasets with chunks found.")
         logger.info("   Make sure your datasets are in: dataset/etl6/, dataset/etl9g/, etc.")
         return False
 
     logger.info(f"\n✅ Successfully generated {generated_count} chunk_info.json file(s)")
+    if existing_count > 0:
+        logger.info(f"   ({existing_count} dataset(s) already had metadata)")
     logger.info("   Training scripts can now auto-detect and load your datasets!")
     return True
 

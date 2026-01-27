@@ -69,7 +69,7 @@ class HiGITAConfig:
         self.num_radicals = 16
 
         # Contrastive learning
-        self.contrastive_weight = 0.5  # Balance classification + contrastive
+        self.contrastive_weight = 0.1  # Auxiliary loss weight (reduced from 0.5 for better accuracy)
         self.temperature = 0.07
 
         # Text encoder
@@ -391,9 +391,7 @@ def main():
         )
 
         # Save best model
-        if save_best_model(
-            model, val_metrics["accuracy"], best_val_acc, best_path
-        ):
+        if save_best_model(model, val_metrics["accuracy"], best_val_acc, best_path):
             best_val_acc = val_metrics["accuracy"]
 
     # Save final history

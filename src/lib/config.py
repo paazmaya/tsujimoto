@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Tuple
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -135,7 +135,7 @@ class RadicalRNNConfig(OptimizationConfig):
     """
 
     # ========== RADICAL DECOMPOSITION PARAMETERS ==========
-    radical_vocab_size: int = 500  # Estimated unique radicals in kanji
+    radical_vocab_size: int = 2000  # Increased from 500 for better character discrimination
     radical_embedding_dim: int = 128  # Dimension for radical embeddings
     radical_encoding_type: str = "binary_tree"  # binary_tree, one_hot, or learned
 

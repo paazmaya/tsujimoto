@@ -429,8 +429,8 @@ Examples:
     parser.add_argument(
         "--radical-vocab-size",
         type=int,
-        default=500,
-        help="Number of unique radicals (default: 500)",
+        default=2000,
+        help="Number of unique radicals (default: 2000 for better character discrimination)",
     )
     parser.add_argument(
         "--radical-embedding-dim",
@@ -513,7 +513,7 @@ Examples:
     )
 
     # Add checkpoint management arguments
-    setup_checkpoint_arguments(parser, "rnn")
+    setup_checkpoint_arguments(parser, "radical_rnn")
 
     args = parser.parse_args()
 
@@ -548,7 +548,30 @@ Examples:
     )
 
     # ========== VERIFY GPU ==========
-    verify_and_setup_gpu()
+    device = verify_and_setup_gpu()
+
+    # ========== CHECK RADICAL-RNN COMPATIBILITY ==========
+    # Radical RNN is fundamentally limited by the radical vocab size
+    # With 500 radicals, it cannot effectively distinguish 43K+ characters
+    # This is a design limitation, not a bug
+    if config.num_classes > 3500:
+        logger.warning("=" * 70)
+        logger.warning("⚠️  RADICAL RNN LIMITATION DETECTED")
+        logger.warning("=" * 70)
+        logger.warning(f"Your dataset has {config.num_classes:,} classes")
+        logger.warning(f"But Radical RNN uses only {config.radical_vocab_size} radicals for decomposition")
+        logger.warning("")
+        logger.warning("This creates a severe bottleneck where many different characters")
+        logger.warning("map to identical radical combinations, making discrimination impossible.")
+        logger.warning("")
+        logger.warning("RECOMMENDATION:")
+        logger.warning("  Option 1: Use a simpler model for large character sets (CNN, RNN, HierCode)")
+        logger.warning("  Option 2: Limit to JIS standard characters (~3,000)")
+        logger.warning("    $ python train_radical_rnn.py --num-classes 3036")
+        logger.warning("  Option 3: Increase radical vocab size (expensive, needs retraining)")
+        logger.warning("    $ python train_radical_rnn.py --radical-vocab-size 2000")
+        logger.warning("=" * 70)
+        logger.warning("")
 
     logger.info("=" * 70)
     logger.info("RADICAL RNN TRAINING FOR KANJI RECOGNITION")
@@ -557,6 +580,7 @@ Examples:
     logger.info(f"  Data: {config.data_dir}")
     logger.info(f"  Epochs: {config.epochs}")
     logger.info(f"  Batch size: {config.batch_size}")
+    logger.info(f"  Classes: {config.num_classes:,}")
     logger.info(f"  Radical vocab: {config.radical_vocab_size}")
     logger.info(
         f"  RNN: {config.rnn_type} (hidden: {config.rnn_hidden_size}, layers: {config.rnn_num_layers})"
@@ -612,6 +636,25 @@ Examples:
     # ========== INITIALIZE CHECKPOINT MANAGER ==========
     checkpoint_manager = CheckpointManager(args.checkpoint_dir, "rnn")
 
+    # ========== RESTORE TRAINING HISTORY IF RESUMING ==========
+    # If resuming from checkpoint, load the previous training history
+    history_file_path = Path(args.checkpoint_dir) / "training_history_rnn.json"
+    if history_file_path.exists():
+        try:
+            import json
+            with open(history_file_path, "r", encoding="utf-8") as f:
+                old_history = json.load(f)
+            # Pre-populate trainer.history with data from previous epochs
+            for entry in old_history:
+                trainer.history["train_loss"].append(entry["train"]["loss"])
+                trainer.history["train_acc"].append(entry["train"]["accuracy"])
+                trainer.history["val_loss"].append(entry["val"]["loss"])
+                trainer.history["val_acc"].append(entry["val"]["accuracy"])
+            logger.info(f"✓ Loaded previous training history ({len(old_history)} epochs)")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not load history file: {e}")
+            logger.info("   Starting with fresh history")
+
     # ========== TRAINING LOOP ==========
     logger.info("🚀 TRAINING...")
     best_val_acc = 0.0
@@ -651,7 +694,7 @@ Examples:
 
         # Save checkpoint after each epoch for resuming later
         checkpoint_manager.save_checkpoint(
-            epoch - 1,  # Convert to 0-indexed
+            epoch,  # Use actual epoch number (1-indexed)
             model,
             optimizer,
             scheduler,
@@ -679,6 +722,31 @@ Examples:
         trainer.history,
         Path(config.results_dir) / "radical_rnn_results.json",
     )
+
+    # ========== SAVE TRAINING HISTORY FOR CHECKPOINT MANAGER ==========
+    # Save history in format expected by copy_best_checkpoint.py
+    import json
+    history_file = Path(args.checkpoint_dir) / "training_history_rnn.json"
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    history_for_json = []
+    for epoch_idx in range(len(trainer.history["train_loss"])):
+        history_for_json.append({
+            "epoch": epoch_idx + 1,
+            "train": {
+                "loss": float(trainer.history["train_loss"][epoch_idx]),
+                "accuracy": float(trainer.history["train_acc"][epoch_idx]),
+            },
+            "val": {
+                "loss": float(trainer.history["val_loss"][epoch_idx]),
+                "accuracy": float(trainer.history["val_acc"][epoch_idx]),
+            },
+        })
+    
+    with open(history_file, "w", encoding="utf-8") as f:
+        json.dump(history_for_json, f, indent=2)
+    
+    logger.info(f"✓ Training history saved to {history_file}")
 
     # ========== CREATE CHARACTER MAPPING ==========
     logger.info("\n📊 Creating character mapping for inference...")

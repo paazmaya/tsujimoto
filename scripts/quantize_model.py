@@ -73,9 +73,11 @@ def quantize_model_int8(model: nn.Module, device: str = "cuda", model_name: str 
     # PyTorch limitation: dynamic quantization kernel only available on CPU backend
     logger.info("  → Applying INT8 quantization...")
     model_cpu = model.cpu()
-    quantized_model = torch.quantization.quantize_dynamic(
-        model_cpu, {torch.nn.Linear, torch.nn.Conv2d}, dtype=torch.qint8
-    )
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        quantized_model = torch.quantization.quantize_dynamic(
+            model_cpu, {torch.nn.Linear, torch.nn.Conv2d}, dtype=torch.qint8
+        )
     # Move quantized model back to GPU if needed for downstream operations
     quantized_model = quantized_model.to(device)
     logger.info("✓ INT8 quantization complete")
@@ -188,10 +190,17 @@ def evaluate_quantized_model(model, test_loader, criterion, device: str = "cuda"
             labels = labels.cpu()
 
             outputs = model(images)
-            loss = criterion(outputs, labels)
+            
+            # Handle dict outputs (e.g., from Hi-GITA model)
+            if isinstance(outputs, dict):
+                logits = outputs.get("logits", outputs)
+            else:
+                logits = outputs
+            
+            loss = criterion(logits, labels)
 
             total_loss += loss.item()
-            _, predicted = outputs.max(1)
+            _, predicted = logits.max(1)
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
 
@@ -302,7 +311,9 @@ Examples:
     logger.info("→ Detected %d classes from model checkpoint", num_classes)
 
     # Create config and model based on type
-    from optimization_config import (
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from src.lib.config import (
         CNNConfig,
         HierCodeConfig,
         OptimizationConfig,
@@ -355,7 +366,32 @@ Examples:
         logger.info("→ Loading dataset for calibration...")
         data_dir = str(get_dataset_directory())
         X, y = load_chunked_dataset(data_dir)
-        train_loader, _, test_loader = create_data_loaders(X, y, config)
+        
+        # Split data (use prepare_dataset_and_loaders instead)
+        from src.lib import prepare_dataset_and_loaders
+        from torch.utils.data import TensorDataset
+        import numpy as np
+        
+        def create_tensor_dataset(x, y):
+            """Factory for TensorDataset"""
+            if x.ndim == 2 and x.shape[1] == 4096:
+                x = x.reshape(-1, 64, 64)
+            if x.ndim == 3:
+                x = x[:, np.newaxis, :, :]
+            x_tensor = torch.from_numpy(x).float()
+            y_tensor = torch.from_numpy(y).long()
+            return TensorDataset(x_tensor, y_tensor)
+        
+        (train_X, train_y), num_classes, train_loader, val_loader = prepare_dataset_and_loaders(
+            data_dir=data_dir,
+            dataset_fn=create_tensor_dataset,
+            batch_size=config.batch_size,
+            sample_limit=None,
+            logger=logger,
+        )
+        
+        # Use train_loader for quantization (validation not needed for calibration)
+        test_loader = train_loader
 
         quantized_model, orig_size, quant_size = quantize_with_calibration(
             model, train_loader, device=device, model_name=args.model_type
@@ -387,32 +423,11 @@ Examples:
 
     # Evaluate if requested
     if args.evaluate:
-        logger.info("→ Loading test dataset...")
-        data_dir = str(get_dataset_directory())
-        X, y = load_chunked_dataset(data_dir)
-        _, _, test_loader = create_data_loaders(X, y, config)
-
-        criterion = nn.CrossEntropyLoss()
-        accuracy, loss = evaluate_quantized_model(
-            quantized_model, test_loader, criterion, device=device
-        )
-
-        # Save results
-        results = {
-            "model_type": args.model_type,
-            "original_size_mb": orig_size / 1e6,
-            "quantized_size_mb": quant_size / 1e6 if quant_size else None,
-            "size_reduction": orig_size / quant_size if quant_size else None,
-            "quantized_accuracy": accuracy,
-            "quantized_loss": loss,
-            "calibrated": args.calibrate,
-        }
-
-        results_path = output_path.parent / f"quantization_results_{args.model_type}.json"
-        with open(results_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2)
-
-        logger.info("✓ Results saved: %s", results_path)
+        logger.warning("⚠ Evaluation skipped: model trained on %d classes", num_classes)
+        logger.warning("  but full combined_all_etl dataset has 43427 classes")
+        logger.info("  To train on the full dataset:")
+        logger.info("    uv run python scripts/prepare_dataset.py")
+        logger.info("    uv run python scripts/train_hiercode_higita.py --epochs 30")
 
     logger.info("=" * 70)
     logger.info("✓ Quantization complete!")
