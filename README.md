@@ -12,13 +12,9 @@ This project trains multiple neural network architectures for Japanese kanji cha
 
 ### Quantization Documentation (4-bit BitsAndBytes)
 
-| Document                                                     | Purpose                                       | Read Time |
-| ------------------------------------------------------------ | --------------------------------------------- | --------- |
-| [**4BIT_INDEX.md**](4BIT_INDEX.md)                           | Navigation guide, quick lookup, decision tree | 2 min     |
-| [**4BIT_QUICK_START.md**](4BIT_QUICK_START.md)               | Copy-paste commands, common issues            | 5 min     |
-| [**4BIT_SUMMARY.md**](4BIT_SUMMARY.md)                       | Overview, key differences from INT8           | 3 min     |
-| [**4BIT_QUANTIZATION_GUIDE.md**](4BIT_QUANTIZATION_GUIDE.md) | Technical details, deployment checklist       | 15 min    |
-| [**4BIT_TESTING_REPORT.md**](4BIT_TESTING_REPORT.md)         | Test results, validation, performance metrics | 10 min    |
+| Document                                                     | Purpose                                 |
+| ------------------------------------------------------------ | --------------------------------------- |
+| [**4BIT_QUANTIZATION_GUIDE.md**](4BIT_QUANTIZATION_GUIDE.md) | Technical details, deployment checklist |
 
 ## 🚀 Quick Start
 
@@ -48,49 +44,78 @@ uv run python scripts/generate_chunk_metadata.py
 Requires CUDA 13 to be available
 https://developer.nvidia.com/cuda-downloads
 
+**Unified Training Interface** (recommended for all variants):
+
 ```ps1
+# View all available training variants
+uv run python scripts/train.py --help
+
 # CNN (fast baseline, 97.18% accuracy on ETL9G)
-# Automatically uses combined_all_etl (934K) if available, else ETL9G (607K)
-uv run python scripts/train_cnn_model.py --data-dir dataset
+uv run python scripts/train.py cnn --epochs 30 --batch-size 64
 
 # RNN (best accuracy, 98.4% on ETL9G)
-# Automatically uses combined_all_etl (934K) if available, else ETL9G (607K)
-uv run python scripts/train_radical_rnn.py
+uv run python scripts/train.py rnn --model-type hybrid_cnn_rnn --epochs 30
+
+# Radical RNN (radical-aware processing)
+uv run python scripts/train.py radical-rnn --epochs 35 --hidden-size 256
 
 # HierCode (recommended, 95.56% + quantizable on ETL9G)
-# Automatically uses combined_all_etl (934K) if available, else ETL9G (607K)
-uv run python scripts/train_hiercode.py --epochs 30
+uv run python scripts/train.py hiercode --epochs 30 --codebook-total-size 1024
 
-# With checkpoint resume (crash-safe)
-uv run python scripts/train_hiercode.py --resume-from training/hiercode/checkpoints/checkpoint_epoch_015.pt --epochs 30
+# HierCode with Hi-GITA Enhancement
+uv run python scripts/train.py hiercode-higita --enable-higita-enhancement --epochs 30
+
+# Vision Transformer (ViT)
+uv run python scripts/train.py vit --epochs 40 --patch-size 4
 
 # QAT (lightweight deployment, 1.7 MB)
-# Automatically uses combined_all_etl (934K) if available, else ETL9G (607K)
-uv run python scripts/train_qat.py --checkpoint-dir training/qat/checkpoints
+uv run python scripts/train.py qat --epochs 25 --batch-size 32
 ```
 
-**Dataset Selection**: All scripts automatically select the best available dataset in this priority: `combined_all_etl` → `etl9g` → `etl8g` → `etl7` → `etl6`. See [Dataset Auto-Detection Priority](#dataset-auto-detection-priority) above.
-
-**Usage examples**:
+**Checkpoint Management Examples**:
 
 ```ps1
-# Run 1: Trains from scratch (epochs 1-15), saves checkpoints
-uv run python scripts/train_cnn_model.py --epochs 30
+# Run 1: Trains from scratch (epochs 1-30), saves checkpoints
+uv run python scripts/train.py cnn --epochs 30
 
 # Interrupted at epoch 15? Just re-run - automatically resumes from epoch 16
-uv run python scripts/train_cnn_model.py --epochs 30
+uv run python scripts/train.py cnn --epochs 30
 
 # Resume from specific checkpoint
-uv run python scripts/train_cnn_model.py --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt
+uv run python scripts/train.py cnn --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt
 
 # Start fresh (ignore existing checkpoints)
-uv run python scripts/train_cnn_model.py --no-checkpoint
+uv run python scripts/train.py cnn --no-checkpoint
 
 # Keep more checkpoints (default is 5, keeps last 10)
-uv run python scripts/train_cnn_model.py --keep-last-n 10
+uv run python scripts/train.py cnn --keep-last-n 10
 
 # Change checkpoint directory
-uv run python scripts/train_cnn_model.py --checkpoint-dir training/cnn/my_checkpoints
+uv run python scripts/train.py cnn --checkpoint-dir training/cnn/my_checkpoints
+
+# View all options for a specific variant
+uv run python scripts/train.py cnn --help
+```
+
+**Dataset Selection**: All training scripts automatically select the best available dataset in this priority: `combined_all_etl` → `etl9g` → `etl8g` → `etl7` → `etl6`. See [Dataset Auto-Detection Priority](#dataset-auto-detection-priority) for details.
+
+**Custom Dataset Examples**:
+
+```ps1
+# Use specific dataset
+uv run python scripts/train.py cnn --data-dir dataset/etl9g --epochs 30
+
+# Use custom dataset location
+uv run python scripts/train.py cnn --data-dir /custom/path/to/dataset --epochs 30
+
+# Test all variants with custom dataset
+uv run python scripts/train.py rnn --data-dir /data/custom --model-type hybrid_cnn_rnn
+uv run python scripts/train.py hiercode --data-dir /data/custom
+uv run python scripts/train.py vit --data-dir /data/custom
+
+# Direct script execution with custom dataset
+python scripts/train_cnn_model.py --data-dir /path/to/dataset --epochs 30
+python scripts/train_rnn.py --data-dir /path/to/dataset --model-type hybrid_cnn_rnn
 ```
 
 ### Checkpoint Manager API
@@ -137,7 +162,6 @@ uv sync --all-extras       # Sync with dev dependencies
 uv run pytest tests/       # Run tests
 uv run ruff format .       # Format code
 uv run ruff check . --fix  # Lint and fix
-uv run jupyter notebook    # Start Jupyter
 ```
 
 ## 📊 Dependency Management
@@ -154,8 +178,8 @@ This project uses **uv** for fast, reliable Python dependency management.
 **Complete HierCode training + quantization + export:**
 
 ```ps1
-# Step 1: Train HierCode (30 epochs)
-uv run python scripts/train_hiercode.py --data-dir dataset --epochs 30 --checkpoint-dir training/hiercode/checkpoints
+# Step 1: Train HierCode (30 epochs) using unified interface
+uv run python scripts/train.py hiercode --epochs 30 --codebook-total-size 1024
 
 # Step 1b: Copy best checkpoint (finds highest validation accuracy automatically)
 uv run python scripts/copy_best_checkpoint.py --model-type hiercode
@@ -555,10 +579,10 @@ All folders and checkpoints are created automatically by training scripts. No ma
 
 ```ps1
 # This automatically creates: training/cnn/checkpoints/
-uv run python scripts/train_cnn_model.py --data-dir dataset
+uv run python scripts/train.py cnn --data-dir dataset
 
 # This automatically creates: training/hiercode/checkpoints/ and training/hiercode/exports/
-uv run python scripts/train_hiercode.py --data-dir dataset
+uv run python scripts/train.py hiercode --data-dir dataset
 uv run python scripts/export_to_onnx_hiercode.py --model-path training/hiercode/hiercode_model_best.pth
 ```
 
@@ -566,7 +590,7 @@ uv run python scripts/export_to_onnx_hiercode.py --model-path training/hiercode/
 
 ```ps1
 # Use custom checkpoint path (creates if doesn't exist)
-uv run python scripts/train_cnn_model.py --data-dir dataset --checkpoint-dir training/cnn/my_custom_checkpoints
+uv run python scripts/train.py cnn --data-dir dataset --checkpoint-dir training/cnn/my_custom_checkpoints
 ```
 
 ## 📊 Results Comparison (on ETL9G)
@@ -616,7 +640,7 @@ uv run python scripts/prepare_dataset.py --output-dir my_datasets
 All training scripts **automatically select the best available dataset** using this priority order:
 
 ```
-1. combined_all_etl  ← 934K samples, 4,154 classes (recommended if available)
+1. combined_all_etl  ← 934K samples, 43,427 classes (recommended if available)
 2. etl9g             ← 607K samples, 3,036 classes (default if combined not available)
 3. etl8g             ← 153K samples, 956 classes
 4. etl7              ← 16.8K samples, 48 classes
@@ -635,11 +659,11 @@ All training scripts **automatically select the best available dataset** using t
 uv run python scripts/prepare_dataset.py
 
 # Then train - automatically uses combined_all_etl (934K samples)
-uv run python scripts/train_cnn_model.py --data-dir dataset
-uv run python scripts/train_qat.py --data-dir dataset
-uv run python scripts/train_radical_rnn.py --data-dir dataset
-uv run python scripts/train_vit.py --data-dir dataset
-uv run python scripts/train_hiercode.py --data-dir dataset
+uv run python scripts/train.py cnn --data-dir dataset
+uv run python scripts/train.py qat --data-dir dataset
+uv run python scripts/train.py radical-rnn --data-dir dataset
+uv run python scripts/train.py vit --data-dir dataset
+uv run python scripts/train.py hiercode --data-dir dataset
 ```
 
 **Training Impact**:
@@ -692,7 +716,7 @@ All training scripts use intelligent dataset selection:
 ```python
 # Priority order (checked in this sequence)
 dataset_priority = [
-    "combined_all_etl",  # 934K samples, 4,154 classes (best)
+    "combined_all_etl",  # 934K samples, 43,427 classes (best)
     "etl9g",             # 607K samples, 3,036 classes (default)
     "etl8g",             # 153K samples, 956 classes
     "etl7",              # 16.8K samples, 48 classes
@@ -706,7 +730,25 @@ for dataset in dataset_priority:
         return load_dataset(f"dataset/{dataset}")  # Use this one!
 ```
 
-**Affected Scripts**:
+**Training Variants** (accessed via unified entry point):
+
+All training variants use the unified `scripts/train.py` entry point:
+
+```ps1
+# View all variants
+uv run python scripts/train.py --help
+
+# Train any variant with auto-detected dataset
+uv run python scripts/train.py cnn --epochs 30
+uv run python scripts/train.py rnn --epochs 30
+uv run python scripts/train.py hiercode --epochs 30
+uv run python scripts/train.py qat --epochs 25
+uv run python scripts/train.py vit --epochs 40
+uv run python scripts/train.py radical-rnn --epochs 35
+uv run python scripts/train.py hiercode-higita --epochs 30
+```
+
+Individual training scripts (for direct execution or programmatic use):
 
 - `scripts/train_cnn_model.py` - CNN baseline
 - `scripts/train_qat.py` - Quantization-aware training
@@ -723,7 +765,7 @@ Your dataset/ directory contains:
 ├── etl9g/
 └── etl8g/
 
-When you run: uv run python scripts/train_cnn_model.py --data-dir dataset
+When you run: uv run python scripts/train.py cnn --data-dir dataset
 ↓
 Script finds combined_all_etl/ first → uses it (934K samples)
 ↓
@@ -795,24 +837,24 @@ A: Just re-run the training command and it automatically resumes from the latest
 
 ```ps1
 # First run - trains from scratch
-uv run python scripts/train_cnn_model.py --epochs 30
+uv run python scripts/train.py cnn --epochs 30
 
 # If interrupted, just run again - resumes automatically
-uv run python scripts/train_cnn_model.py --epochs 30
+uv run python scripts/train.py cnn --epochs 30
 ```
 
 **Q: How do I start fresh training and ignore old checkpoints?**
 A: Use the `--no-checkpoint` flag:
 
 ```ps1
-uv run python scripts/train_cnn_model.py --no-checkpoint
+uv run python scripts/train.py cnn --no-checkpoint
 ```
 
 **Q: Can I manually specify which checkpoint to resume from?**
 A: Yes, use `--resume-from`:
 
 ```ps1
-uv run python scripts/train_cnn_model.py --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt
+uv run python scripts/train.py cnn --resume-from training/cnn/checkpoints/checkpoint_epoch_010.pt
 ```
 
 **Q: How many checkpoints are kept?**

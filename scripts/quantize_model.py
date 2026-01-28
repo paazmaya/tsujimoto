@@ -17,7 +17,6 @@ import torch.nn as nn
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.lib import (
-    create_data_loaders,
     get_dataset_directory,
     load_chunked_dataset,
     setup_logger,
@@ -190,13 +189,13 @@ def evaluate_quantized_model(model, test_loader, criterion, device: str = "cuda"
             labels = labels.cpu()
 
             outputs = model(images)
-            
+
             # Handle dict outputs (e.g., from Hi-GITA model)
             if isinstance(outputs, dict):
                 logits = outputs.get("logits", outputs)
             else:
                 logits = outputs
-            
+
             loss = criterion(logits, labels)
 
             total_loss += loss.item()
@@ -312,6 +311,7 @@ Examples:
 
     # Create config and model based on type
     import sys
+
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from src.lib.config import (
         CNNConfig,
@@ -366,12 +366,13 @@ Examples:
         logger.info("→ Loading dataset for calibration...")
         data_dir = str(get_dataset_directory())
         X, y = load_chunked_dataset(data_dir)
-        
+
         # Split data (use prepare_dataset_and_loaders instead)
-        from src.lib import prepare_dataset_and_loaders
-        from torch.utils.data import TensorDataset
         import numpy as np
-        
+        from torch.utils.data import TensorDataset
+
+        from src.lib import prepare_dataset_and_loaders
+
         def create_tensor_dataset(x, y):
             """Factory for TensorDataset"""
             if x.ndim == 2 and x.shape[1] == 4096:
@@ -381,7 +382,7 @@ Examples:
             x_tensor = torch.from_numpy(x).float()
             y_tensor = torch.from_numpy(y).long()
             return TensorDataset(x_tensor, y_tensor)
-        
+
         (train_X, train_y), num_classes, train_loader, val_loader = prepare_dataset_and_loaders(
             data_dir=data_dir,
             dataset_fn=create_tensor_dataset,
@@ -389,9 +390,8 @@ Examples:
             sample_limit=None,
             logger=logger,
         )
-        
+
         # Use train_loader for quantization (validation not needed for calibration)
-        test_loader = train_loader
 
         quantized_model, orig_size, quant_size = quantize_with_calibration(
             model, train_loader, device=device, model_name=args.model_type

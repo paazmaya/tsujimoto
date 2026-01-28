@@ -38,7 +38,6 @@ from src.lib import (
     save_best_model,
     save_config,
     save_training_results,
-    setup_checkpoint_arguments,
     setup_logger,
     verify_and_setup_gpu,
 )
@@ -423,119 +422,73 @@ Examples:
         """,
     )
 
-    # Dataset (auto-detected from common location)
-    parser.add_argument("--sample-limit", type=int, default=None, help="Limit samples for testing")
+    from scripts.training_args import add_variant_args_to_parser
 
-    # Model
-    parser.add_argument("--image-size", type=int, default=64, help="Input image size (default: 64)")
-    parser.add_argument(
-        "--num-classes",
-        type=int,
-        default=43528,
-        help="Number of character classes (default: 43,528 for combined ETL6-9 dataset)",
-    )
-
-    # Training hyperparameters
-    parser.add_argument(
-        "--epochs", type=int, default=30, help="Total training epochs (default: 30)"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=64, help="Batch size (default: 64). Reduce if OOM"
-    )
-    parser.add_argument(
-        "--learning-rate", type=float, default=0.001, help="Initial learning rate (default: 0.001)"
-    )
-    parser.add_argument(
-        "--weight-decay", type=float, default=1e-4, help="L2 regularization (default: 1e-4)"
-    )
-
-    # QAT specific parameters
-    parser.add_argument(
-        "--qat-backend",
-        type=str,
-        default="fbgemm",
-        choices=["fbgemm", "qnnpack", "x86"],
-        help="Quantization backend (default: fbgemm)",
-    )
-    parser.add_argument(
-        "--qat-bits",
-        type=int,
-        default=8,
-        choices=[8],
-        help="Quantization bit-width (default: 8 for INT8)",
-    )
-    parser.add_argument(
-        "--qat-start-epoch",
-        type=int,
-        default=5,
-        help="Start QAT fine-tuning after this epoch (default: 5)",
-    )
-    parser.add_argument(
-        "--qat-fine-tune-lr",
-        type=float,
-        default=0.00001,
-        help="Learning rate for QAT phase (default: 0.00001)",
-    )
-
-    # Optimizer & scheduler
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="adamw",
-        choices=["adamw", "sgd"],
-        help="Optimizer (default: adamw)",
-    )
-    parser.add_argument(
-        "--scheduler",
-        type=str,
-        default="cosine",
-        choices=["cosine", "step"],
-        help="LR scheduler (default: cosine)",
-    )
-
-    # Output
-    parser.add_argument(
-        "--model-dir",
-        type=str,
-        default="training/qat/config",
-        help="Directory to save model config (default: training/qat/config)",
-    )
-    parser.add_argument(
-        "--results-dir",
-        type=str,
-        default="training/qat/results",
-        help="Directory to save results (default: training/qat/results)",
-    )
-
-    # Add checkpoint management arguments (replaces old --resume-from and --checkpoint-dir)
-    setup_checkpoint_arguments(parser, "qat")
+    add_variant_args_to_parser(parser, "qat", checkpoint_dir_default="training/qat/checkpoints")
 
     args = parser.parse_args()
+    train_qat(args)
+
+
+def train_qat(args):
+    """
+    Core QAT training function callable from unified entry point.
+
+    Args:
+        args: Namespace or dict-like object with training parameters
+    """
+    # Get parameters with safe defaults
+    sample_limit = getattr(args, "sample_limit", None)
+    image_size = getattr(args, "image_size", 64)
+    num_classes = getattr(args, "num_classes", 43528)
+    epochs = getattr(args, "epochs", 30)
+    batch_size = getattr(args, "batch_size", 64)
+    learning_rate = getattr(args, "learning_rate", 0.001)
+    weight_decay = getattr(args, "weight_decay", 1e-4)
+    qat_backend = getattr(args, "qat_backend", "fbgemm")
+    qat_bits = getattr(args, "qat_bits", 8)
+    qat_start_epoch = getattr(args, "qat_start_epoch", 5)
+    qat_fine_tune_lr = getattr(args, "qat_fine_tune_lr", 0.00001)
+    optimizer_name = getattr(args, "optimizer", "adamw")
+    scheduler_name = getattr(args, "scheduler", "cosine")
+    model_dir = getattr(args, "model_dir", "training/qat/config")
+    results_dir = getattr(args, "results_dir", "training/qat/results")
+    checkpoint_dir = getattr(args, "checkpoint_dir", "training/qat/checkpoints")
+    resume_from = getattr(args, "resume_from", None)
+    no_checkpoint = getattr(args, "no_checkpoint", False)
 
     # ========== VERIFY GPU ==========
     verify_and_setup_gpu()
 
-    # Auto-detect dataset directory
-    data_dir = str(get_dataset_directory())
+    # Get data_dir from arguments or use default
+    data_dir_arg = getattr(args, "data_dir", "dataset")
+
+    # Use specified data_dir or auto-detect if using default
+    if data_dir_arg == "dataset":
+        data_path = get_dataset_directory()  # Auto-detect
+    else:
+        data_path = Path(data_dir_arg)  # Use specified
+
+    data_dir = str(data_path)
     logger.info(f"Using dataset from: {data_dir}")
 
     # ========== CREATE CONFIG ==========
     config = QATConfig(
         data_dir=data_dir,
-        image_size=args.image_size,
-        num_classes=args.num_classes,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        qat_backend=args.qat_backend,
-        qat_bits=args.qat_bits,
-        qat_start_epoch=args.qat_start_epoch,
-        qat_fine_tune_lr=args.qat_fine_tune_lr,
-        optimizer=args.optimizer,
-        scheduler=args.scheduler,
-        model_dir=args.model_dir,
-        results_dir=args.results_dir,
+        image_size=image_size,
+        num_classes=num_classes,
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        qat_backend=qat_backend,
+        qat_bits=qat_bits,
+        qat_start_epoch=qat_start_epoch,
+        qat_fine_tune_lr=qat_fine_tune_lr,
+        optimizer=optimizer_name,
+        scheduler=scheduler_name,
+        model_dir=model_dir,
+        results_dir=results_dir,
     )
 
     logger.info("=" * 70)
@@ -555,7 +508,7 @@ Examples:
     logger.info("📂 LOADING DATASET (auto-detecting best available)...")
     X, y = load_chunked_dataset(config.data_dir)
     train_loader, val_loader, test_loader = create_data_loaders(
-        X, y, config, sample_limit=args.sample_limit
+        X, y, config, sample_limit=sample_limit
     )
 
     # ========== CREATE MODEL ==========
@@ -579,7 +532,7 @@ Examples:
     save_config(config, config.model_dir, "qat_config.json")
 
     # ========== INITIALIZE CHECKPOINT MANAGER ==========
-    checkpoint_manager = CheckpointManager(args.checkpoint_dir, "qat")
+    checkpoint_manager = CheckpointManager(checkpoint_dir, "qat")
 
     # ========== INITIALIZE TRAINING STATE ==========
     start_epoch = 1
@@ -592,8 +545,8 @@ Examples:
         optimizer,
         scheduler,
         device,
-        resume_from=args.resume_from,
-        args_no_checkpoint=args.no_checkpoint,
+        resume_from=resume_from,
+        args_no_checkpoint=no_checkpoint,
     )
     best_val_acc = best_metrics.get("val_accuracy", 0.0)
     start_epoch = max(start_epoch, 1)  # QAT starts at epoch 1, not 0

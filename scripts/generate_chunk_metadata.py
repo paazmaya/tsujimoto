@@ -71,10 +71,12 @@ def generate_chunk_metadata(data_dir="dataset"):
 
     if generated_count == 0:
         if existing_count > 0:
-            logger.info(f"✅ All datasets already have chunk_info.json ({existing_count} dataset(s))")
+            logger.info(
+                f"✅ All datasets already have chunk_info.json ({existing_count} dataset(s))"
+            )
             logger.info("   Your datasets are ready for training!")
             return True
-        
+
         logger.warning("⚠️  No chunk metadata files were generated. No datasets with chunks found.")
         logger.info("   Make sure your datasets are in: dataset/etl6/, dataset/etl9g/, etc.")
         return False

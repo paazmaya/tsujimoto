@@ -42,7 +42,6 @@ from src.lib import (
     get_scheduler,
     prepare_dataset_and_loaders,
     save_best_model,
-    setup_checkpoint_arguments,
     setup_logger,
     verify_and_setup_gpu,
 )
@@ -69,7 +68,9 @@ class HiGITAConfig:
         self.num_radicals = 16
 
         # Contrastive learning
-        self.contrastive_weight = 0.1  # Auxiliary loss weight (reduced from 0.5 for better accuracy)
+        self.contrastive_weight = (
+            0.1  # Auxiliary loss weight (reduced from 0.5 for better accuracy)
+        )
         self.temperature = 0.07
 
         # Text encoder
@@ -243,33 +244,54 @@ def validate(
 
 def main():
     parser = argparse.ArgumentParser(description="Train HierCode with optional Hi-GITA enhancement")
-    parser.add_argument("--epochs", type=int, default=30, help="Number of epochs (default: 30)")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size (default: 32)")
-    parser.add_argument(
-        "--learning-rate", type=float, default=0.001, help="Learning rate (default: 0.001)"
-    )
-    parser.add_argument(
-        "--sample-limit", type=int, default=None, help="Limit number of samples (default: None)"
-    )
 
-    # Add checkpoint management arguments
-    setup_checkpoint_arguments(parser, "hiercode_higita")
+    from scripts.training_args import add_variant_args_to_parser
+
+    add_variant_args_to_parser(
+        parser, "hiercode_higita", checkpoint_dir_default="training/hiercode_higita/checkpoints"
+    )
 
     args = parser.parse_args()
+    train_hiercode_higita(args)
+
+
+def train_hiercode_higita(args):
+    """
+    Core HierCode Hi-GITA training function callable from unified entry point.
+
+    Args:
+        args: Namespace or dict-like object with training parameters
+    """
+    # Get parameters with safe defaults
+    epochs = getattr(args, "epochs", 30)
+    batch_size = getattr(args, "batch_size", 32)
+    learning_rate = getattr(args, "learning_rate", 0.001)
+    sample_limit = getattr(args, "sample_limit", None)
+    checkpoint_dir = getattr(args, "checkpoint_dir", "training/hiercode_higita/checkpoints")
+    resume_from = getattr(args, "resume_from", None)
+    no_checkpoint = getattr(args, "no_checkpoint", False)
 
     # ========== VERIFY GPU ==========
     verify_and_setup_gpu()
 
-    # Auto-detect dataset directory
-    data_dir = str(get_dataset_directory())
+    # Get data_dir from arguments or use default
+    data_dir_arg = getattr(args, "data_dir", "dataset")
+
+    # Use specified data_dir or auto-detect if using default
+    if data_dir_arg == "dataset":
+        data_path = get_dataset_directory()  # Auto-detect
+    else:
+        data_path = Path(data_dir_arg)  # Use specified
+
+    data_dir = str(data_path)
     logger.info(f"Using dataset from: {data_dir}")
 
     # Setup
     config = HiGITAConfig()
-    config.batch_size = args.batch_size
-    config.learning_rate = args.learning_rate
-    config.epochs = args.epochs
-    config.checkpoint_dir = args.checkpoint_dir
+    config.batch_size = batch_size
+    config.learning_rate = learning_rate
+    config.epochs = epochs
+    config.checkpoint_dir = checkpoint_dir
     config.data_dir = data_dir
 
     device = "cuda"
@@ -300,7 +322,7 @@ def main():
         data_dir=data_dir,
         dataset_fn=create_tensor_dataset,
         batch_size=config.batch_size,
-        sample_limit=args.sample_limit,
+        sample_limit=sample_limit,
         logger=logger,
     )
 
@@ -343,8 +365,8 @@ def main():
         optimizer,
         scheduler,
         device,
-        resume_from=args.resume_from,
-        args_no_checkpoint=args.no_checkpoint,
+        resume_from=resume_from,
+        args_no_checkpoint=no_checkpoint,
     )
     best_val_acc = best_metrics.get("val_accuracy", 0.0)
     start_epoch = max(start_epoch, 1)  # Epoch numbering starts at 1

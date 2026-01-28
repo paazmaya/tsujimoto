@@ -276,7 +276,7 @@ All training scripts automatically select the best available dataset:
 
 ```
 Priority Order (auto-detected):
-1. combined_all_etl  ← 934K samples, 4,154 classes (recommended)
+1. combined_all_etl  ← 934K samples, 43,427 classes (recommended)
 2. etl9g             ← 607K samples, 3,036 classes (default)
 3. etl8g             ← 153K samples, 956 classes
 4. etl7              ← 16.8K samples, 48 classes

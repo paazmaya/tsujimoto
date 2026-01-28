@@ -40,7 +40,6 @@ from src.lib import (
     save_best_model,
     save_config,
     save_training_results,
-    setup_checkpoint_arguments,
     setup_logger,
     verify_and_setup_gpu,
 )
@@ -435,135 +434,83 @@ Examples:
         """,
     )
 
-    # Dataset (auto-detected from common location)
-    parser.add_argument("--sample-limit", type=int, default=None, help="Limit samples for testing")
+    from scripts.training_args import add_variant_args_to_parser
 
-    # Model
-    parser.add_argument("--image-size", type=int, default=64, help="Input image size (default: 64)")
-    parser.add_argument(
-        "--num-classes",
-        type=int,
-        default=43528,
-        help="Number of character classes (default: 43,528 for combined ETL6-9 dataset)",
-    )
-
-    # Patch and embedding
-    parser.add_argument(
-        "--patch-size",
-        type=int,
-        default=8,
-        help="Patch size (default: 8, results in 64 patches for 64x64)",
-    )
-    parser.add_argument(
-        "--embedding-dim", type=int, default=64, help="Embedding dimension (default: 64)"
-    )
-
-    # Transformer parameters
-    parser.add_argument(
-        "--num-heads", type=int, default=2, help="Number of attention heads (default: 2)"
-    )
-    parser.add_argument(
-        "--num-transformer-layers",
-        type=int,
-        default=2,
-        help="Number of transformer layers (default: 2)",
-    )
-    parser.add_argument(
-        "--mlp-dim", type=int, default=256, help="MLP hidden dimension (default: 256)"
-    )
-
-    # T2T parameters
-    parser.add_argument(
-        "--use-tokens-to-tokens",
-        action="store_true",
-        help="Use Tokens-to-Tokens (T2T) progressive tokenization",
-    )
-    parser.add_argument(
-        "--t2t-kernel-sizes", type=str, default="3,3,3", help="T2T kernel sizes (default: 3,3,3)"
-    )
-
-    # Dropout
-    parser.add_argument("--dropout", type=float, default=0.05, help="Dropout rate (default: 0.05)")
-    parser.add_argument(
-        "--attention-dropout", type=float, default=0.0, help="Attention dropout rate (default: 0.0)"
-    )
-
-    # Training hyperparameters
-    parser.add_argument(
-        "--epochs", type=int, default=30, help="Total training epochs (default: 30)"
-    )
-    parser.add_argument("--batch-size", type=int, default=256, help="Batch size (default: 256)")
-    parser.add_argument(
-        "--learning-rate",
-        type=float,
-        default=0.0005,
-        help="Initial learning rate (default: 0.0005)",
-    )
-    parser.add_argument(
-        "--weight-decay", type=float, default=1e-4, help="L2 regularization (default: 1e-4)"
-    )
-
-    # Optimizer & scheduler
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="adamw",
-        choices=["adamw", "sgd"],
-        help="Optimizer (default: adamw)",
-    )
-    parser.add_argument(
-        "--scheduler",
-        type=str,
-        default="cosine",
-        choices=["cosine", "step"],
-        help="LR scheduler (default: cosine)",
-    )
-
-    # Output
-    parser.add_argument(
-        "--model-dir",
-        type=str,
-        default="training/vit/config",
-        help="Directory to save model config (default: training/vit/config)",
-    )
-    parser.add_argument(
-        "--results-dir",
-        type=str,
-        default="training/vit/results",
-        help="Directory to save results (default: training/vit/results)",
-    )
-
-    # Add checkpoint management arguments
-    setup_checkpoint_arguments(parser, "vit")
+    add_variant_args_to_parser(parser, "vit", checkpoint_dir_default="training/vit/checkpoints")
 
     args = parser.parse_args()
+    train_vit(args)
+
+
+def train_vit(args):
+    """
+    Core ViT training function callable from unified entry point.
+
+    Args:
+        args: Namespace or dict-like object with training parameters
+    """
+    # Get parameters with safe defaults
+    sample_limit = getattr(args, "sample_limit", None)
+    image_size = getattr(args, "image_size", 64)
+    num_classes = getattr(args, "num_classes", 43528)
+    patch_size = getattr(args, "patch_size", 8)
+    embedding_dim = getattr(args, "embedding_dim", 64)
+    num_heads = getattr(args, "num_heads", 2)
+    num_transformer_layers = getattr(args, "num_transformer_layers", 2)
+    mlp_dim = getattr(args, "mlp_dim", 256)
+    use_tokens_to_tokens = getattr(args, "use_tokens_to_tokens", False)
+    t2t_kernel_sizes_str = getattr(args, "t2t_kernel_sizes", "3,3,3")
+    dropout = getattr(args, "dropout", 0.05)
+    attention_dropout = getattr(args, "attention_dropout", 0.0)
+    epochs = getattr(args, "epochs", 30)
+    batch_size = getattr(args, "batch_size", 256)
+    learning_rate = getattr(args, "learning_rate", 0.0005)
+    weight_decay = getattr(args, "weight_decay", 1e-4)
+    optimizer_name = getattr(args, "optimizer", "adamw")
+    scheduler_name = getattr(args, "scheduler", "cosine")
+    model_dir = getattr(args, "model_dir", "training/vit/config")
+    results_dir = getattr(args, "results_dir", "training/vit/results")
+    checkpoint_dir = getattr(args, "checkpoint_dir", "training/vit/checkpoints")
+    resume_from = getattr(args, "resume_from", None)
+    no_checkpoint = getattr(args, "no_checkpoint", False)
 
     # Parse T2T kernel sizes
-    t2t_kernel_sizes = tuple(map(int, args.t2t_kernel_sizes.split(",")))
+    t2t_kernel_sizes = tuple(map(int, t2t_kernel_sizes_str.split(",")))
+
+    # Get data_dir from arguments or use default
+    data_dir_arg = getattr(args, "data_dir", "dataset")
+
+    # Use specified data_dir or auto-detect if using default
+    if data_dir_arg == "dataset":
+        data_path = get_dataset_directory()  # Auto-detect
+    else:
+        data_path = Path(data_dir_arg)  # Use specified
+
+    data_dir = str(data_path)
+    logger.info(f"Using dataset from: {data_dir}")
 
     # ========== CREATE CONFIG ==========
-    data_dir = str(get_dataset_directory())
     config = ViTConfig(
         data_dir=data_dir,
-        image_size=args.image_size,
-        num_classes=args.num_classes,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        patch_size=args.patch_size,
-        embedding_dim=args.embedding_dim,
-        num_heads=args.num_heads,
-        num_transformer_layers=args.num_transformer_layers,
-        mlp_dim=args.mlp_dim,
-        use_tokens_to_tokens=args.use_tokens_to_tokens,
+        image_size=image_size,
+        num_classes=num_classes,
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        patch_size=patch_size,
+        embedding_dim=embedding_dim,
+        num_heads=num_heads,
+        num_transformer_layers=num_transformer_layers,
+        mlp_dim=mlp_dim,
+        use_tokens_to_tokens=use_tokens_to_tokens,
         t2t_kernel_sizes=t2t_kernel_sizes,
-        dropout=args.dropout,
-        attention_dropout=args.attention_dropout,
-        optimizer=args.optimizer,
-        scheduler=args.scheduler,
-        model_dir=args.model_dir,
-        results_dir=args.results_dir,
+        dropout=dropout,
+        attention_dropout=attention_dropout,
+        optimizer=optimizer_name,
+        scheduler=scheduler_name,
+        model_dir=model_dir,
+        results_dir=results_dir,
     )
 
     # ========== VERIFY GPU ==========
@@ -590,7 +537,7 @@ Examples:
     logger.info("📂 LOADING DATASET...")
     X, y = load_chunked_dataset(config.data_dir)
     train_loader, val_loader, test_loader = create_data_loaders(
-        X, y, config, sample_limit=args.sample_limit
+        X, y, config, sample_limit=sample_limit
     )
 
     # ========== CREATE MODEL ==========
@@ -609,7 +556,7 @@ Examples:
     save_config(config, config.model_dir, "vit_config.json")
 
     # ========== INITIALIZE CHECKPOINT MANAGER ==========
-    checkpoint_manager = CheckpointManager(args.checkpoint_dir, "vit")
+    checkpoint_manager = CheckpointManager(checkpoint_dir, "vit")
 
     # ========== TRAINING LOOP ==========
     logger.info("🚀 TRAINING...")
@@ -622,8 +569,8 @@ Examples:
         optimizer,
         scheduler,
         device,
-        resume_from=args.resume_from,
-        args_no_checkpoint=args.no_checkpoint,
+        resume_from=resume_from,
+        args_no_checkpoint=no_checkpoint,
     )
     best_val_acc = best_metrics.get("val_accuracy", 0.0)
     start_epoch = max(start_epoch, 1)  # Epoch numbering starts at 1

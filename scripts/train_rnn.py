@@ -43,7 +43,6 @@ from src.lib import (
     get_optimizer,
     get_scheduler,
     prepare_dataset_and_loaders,
-    setup_checkpoint_arguments,
     setup_logger,
     verify_and_setup_gpu,
 )
@@ -832,67 +831,54 @@ class RNNTrainer:
 # ============================================================================
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Train RNN-based Kanji Recognition Models")
-    parser.add_argument(
-        "--model-type",
-        type=str,
-        default="hybrid_cnn_rnn",
-        choices=["basic_rnn", "stroke_rnn", "radical_rnn", "hybrid_cnn_rnn"],
-        help="Type of RNN model to train",
-    )
-    parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    parser.add_argument("--learning-rate", type=float, default=0.001, help="Learning rate")
-    parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay")
-    parser.add_argument("--hidden-size", type=int, default=256, help="RNN hidden size")
-    parser.add_argument("--num-layers", type=int, default=2, help="Number of RNN layers")
-    parser.add_argument("--dropout", type=float, default=0.3, help="Dropout rate")
-    parser.add_argument(
-        "--sample-limit", type=int, default=None, help="Limit number of samples for testing"
-    )
+def train_rnn(args):
+    """
+    Core RNN training function callable from unified entry point.
 
-    # ========== OPTIMIZER & SCHEDULER ==========
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="adamw",
-        choices=["adamw", "sgd"],
-        help="Optimizer (default: adamw)",
-    )
-    parser.add_argument(
-        "--scheduler",
-        type=str,
-        default="cosine",
-        choices=["cosine", "step"],
-        help="Learning rate scheduler (default: cosine)",
-    )
-
-    # Checkpoint arguments
-    setup_checkpoint_arguments(parser, "rnn")
-
-    args = parser.parse_args()
-
+    Args:
+        args: Namespace or dict-like object with training parameters
+    """
     # Setup device
     device = verify_and_setup_gpu()
     logger.info(f"Using device: {device}")
 
-    # Prepare dataset and loaders using unified helper
-    collate_fn = collate_fn_factory(args.model_type)
+    # Get parameters with safe defaults
+    model_type = getattr(args, "model_type", "hybrid_cnn_rnn")
+    batch_size = getattr(args, "batch_size", 32)
+    sample_limit = getattr(args, "sample_limit", None)
+    hidden_size = getattr(args, "hidden_size", 256)
+    num_layers = getattr(args, "num_layers", 2)
+    dropout = getattr(args, "dropout", 0.3)
+    learning_rate = getattr(args, "learning_rate", 0.001)
+    weight_decay = getattr(args, "weight_decay", 1e-4)
+    epochs = getattr(args, "epochs", 30)
+    optimizer_name = getattr(args, "optimizer", "adamw")
+    scheduler_name = getattr(args, "scheduler", "cosine")
 
-    # Auto-detect dataset directory
-    data_dir = str(get_dataset_directory())
+    # Prepare dataset and loaders using unified helper
+    collate_fn = collate_fn_factory(model_type)
+
+    # Get data_dir from arguments or use default
+    data_dir_arg = getattr(args, "data_dir", "dataset")
+
+    # Use specified data_dir or auto-detect if using default
+    if data_dir_arg == "dataset":
+        data_path = get_dataset_directory()  # Auto-detect
+    else:
+        data_path = Path(data_dir_arg)  # Use specified
+
+    data_dir = str(data_path)
     logger.info(f"Using dataset from: {data_dir}")
 
     # Create dataset factory to use RNNKanjiDataset with model_type
     def create_rnn_dataset(x: np.ndarray, y: np.ndarray):
-        return RNNKanjiDataset(x, y, model_type=args.model_type)
+        return RNNKanjiDataset(x, y, model_type=model_type)
 
     (x, y), num_classes, train_loader, val_loader = prepare_dataset_and_loaders(
         data_dir=data_dir,
         dataset_fn=create_rnn_dataset,
-        batch_size=args.batch_size,
-        sample_limit=args.sample_limit,
+        batch_size=batch_size,
+        sample_limit=sample_limit,
         collate_fn=collate_fn,
         num_workers=0,
         logger=logger,
@@ -901,41 +887,53 @@ def main():
     # Create model
     model_kwargs = {
         "num_classes": num_classes,
-        "hidden_size": args.hidden_size,
-        "num_layers": args.num_layers,
-        "dropout": args.dropout,
+        "hidden_size": hidden_size,
+        "num_layers": num_layers,
+        "dropout": dropout,
     }
 
-    if args.model_type == "radical_rnn":
+    if model_type == "radical_rnn":
         model_kwargs["radical_vocab_size"] = 500
 
-    model = create_rnn_model(args.model_type, **model_kwargs)
+    model = create_rnn_model(model_type, **model_kwargs)
     logger.info(
-        f"Created {args.model_type} model with {sum(p.numel() for p in model.parameters()):,} parameters"
+        f"Created {model_type} model with {sum(p.numel() for p in model.parameters()):,} parameters"
     )
 
     # Create trainer and train
     checkpoint_dir = Path("training/rnn/checkpoints")
-    trainer = RNNTrainer(model, device, args.model_type, checkpoint_dir)
+    trainer = RNNTrainer(model, device, model_type, checkpoint_dir)
 
     # Create config for optimizer/scheduler
     config = RNNConfig(
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        optimizer=args.optimizer,
-        scheduler=args.scheduler,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        epochs=epochs,
+        batch_size=batch_size,
+        optimizer=optimizer_name,
+        scheduler=scheduler_name,
     )
 
     trainer.train(
         train_loader=train_loader,
         val_loader=val_loader,
-        epochs=args.epochs,
+        epochs=epochs,
         config=config,
     )
 
     logger.info(f"Training completed! Best validation accuracy: {trainer.best_val_acc:.2f}%")
+
+
+def main():
+    from scripts.training_args import add_variant_args_to_parser
+
+    parser = argparse.ArgumentParser(description="Train RNN-based Kanji Recognition Models")
+
+    # Add all arguments for RNN variant from centralized config
+    add_variant_args_to_parser(parser, "rnn", checkpoint_dir_default="training/rnn/checkpoints")
+
+    args = parser.parse_args()
+    train_rnn(args)
 
 
 if __name__ == "__main__":

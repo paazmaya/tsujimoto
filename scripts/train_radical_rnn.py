@@ -39,7 +39,6 @@ from src.lib import (
     save_best_model,
     save_config,
     save_training_results,
-    setup_checkpoint_arguments,
     setup_logger,
     verify_and_setup_gpu,
 )
@@ -413,138 +412,83 @@ Examples:
         """,
     )
 
-    # Dataset (auto-detected from common location)
-    parser.add_argument("--sample-limit", type=int, default=None, help="Limit samples for testing")
+    from scripts.training_args import add_variant_args_to_parser
 
-    # Model
-    parser.add_argument("--image-size", type=int, default=64, help="Input image size (default: 64)")
-    parser.add_argument(
-        "--num-classes",
-        type=int,
-        default=43528,
-        help="Number of character classes (default: 43,528 for combined ETL6-9 dataset)",
+    add_variant_args_to_parser(
+        parser, "radical_rnn", checkpoint_dir_default="training/radical_rnn/checkpoints"
     )
-
-    # Radical parameters
-    parser.add_argument(
-        "--radical-vocab-size",
-        type=int,
-        default=2000,
-        help="Number of unique radicals (default: 2000 for better character discrimination)",
-    )
-    parser.add_argument(
-        "--radical-embedding-dim",
-        type=int,
-        default=128,
-        help="Radical embedding dimension (default: 128)",
-    )
-    parser.add_argument(
-        "--radical-encoding-type",
-        type=str,
-        default="binary_tree",
-        choices=["one_hot", "binary_tree", "learned"],
-        help="How to encode radicals (default: binary_tree)",
-    )
-
-    # RNN parameters
-    parser.add_argument(
-        "--rnn-type",
-        type=str,
-        default="lstm",
-        choices=["lstm", "gru"],
-        help="RNN type (default: lstm)",
-    )
-    parser.add_argument(
-        "--rnn-hidden-size", type=int, default=256, help="RNN hidden size (default: 256)"
-    )
-    parser.add_argument(
-        "--rnn-num-layers", type=int, default=2, help="Number of RNN layers (default: 2)"
-    )
-    parser.add_argument("--rnn-dropout", type=float, default=0.3, help="RNN dropout (default: 0.3)")
-
-    # CNN parameters
-    parser.add_argument(
-        "--cnn-channels",
-        type=str,
-        default="32,64,128",
-        help="CNN channels per layer (default: 32,64,128)",
-    )
-
-    # Training hyperparameters
-    parser.add_argument(
-        "--epochs", type=int, default=30, help="Total training epochs (default: 30)"
-    )
-    parser.add_argument("--batch-size", type=int, default=64, help="Batch size (default: 64)")
-    parser.add_argument(
-        "--learning-rate", type=float, default=0.001, help="Initial learning rate (default: 0.001)"
-    )
-    parser.add_argument(
-        "--weight-decay", type=float, default=1e-4, help="L2 regularization (default: 1e-4)"
-    )
-
-    # Optimizer & scheduler
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="adamw",
-        choices=["adamw", "sgd"],
-        help="Optimizer (default: adamw)",
-    )
-    parser.add_argument(
-        "--scheduler",
-        type=str,
-        default="cosine",
-        choices=["cosine", "step"],
-        help="LR scheduler (default: cosine)",
-    )
-
-    # Output
-    parser.add_argument(
-        "--model-dir",
-        type=str,
-        default="training/radical_rnn/config",
-        help="Directory to save model config (default: training/radical_rnn/config)",
-    )
-    parser.add_argument(
-        "--results-dir",
-        type=str,
-        default="training/radical_rnn/results",
-        help="Directory to save results (default: training/radical_rnn/results)",
-    )
-
-    # Add checkpoint management arguments
-    setup_checkpoint_arguments(parser, "radical_rnn")
 
     args = parser.parse_args()
+    train_radical_rnn(args)
 
-    # Auto-detect dataset directory
-    data_dir = str(get_dataset_directory())
+
+def train_radical_rnn(args):
+    """
+    Core Radical RNN training function callable from unified entry point.
+
+    Args:
+        args: Namespace or dict-like object with training parameters
+    """
+    # Get parameters with safe defaults
+    sample_limit = getattr(args, "sample_limit", None)
+    image_size = getattr(args, "image_size", 64)
+    num_classes = getattr(args, "num_classes", 43528)
+    radical_vocab_size = getattr(args, "radical_vocab_size", 2000)
+    radical_embedding_dim = getattr(args, "radical_embedding_dim", 128)
+    radical_encoding_type = getattr(args, "radical_encoding_type", "binary_tree")
+    rnn_type = getattr(args, "rnn_type", "lstm")
+    rnn_hidden_size = getattr(args, "rnn_hidden_size", 256)
+    rnn_num_layers = getattr(args, "rnn_num_layers", 2)
+    rnn_dropout = getattr(args, "rnn_dropout", 0.3)
+    cnn_channels_str = getattr(args, "cnn_channels", "32,64,128")
+    epochs = getattr(args, "epochs", 30)
+    batch_size = getattr(args, "batch_size", 64)
+    learning_rate = getattr(args, "learning_rate", 0.001)
+    weight_decay = getattr(args, "weight_decay", 1e-4)
+    optimizer_name = getattr(args, "optimizer", "adamw")
+    scheduler_name = getattr(args, "scheduler", "cosine")
+    model_dir = getattr(args, "model_dir", "training/radical_rnn/config")
+    results_dir = getattr(args, "results_dir", "training/radical_rnn/results")
+    checkpoint_dir = getattr(args, "checkpoint_dir", "training/radical_rnn/checkpoints")
+    resume_from = getattr(args, "resume_from", None)
+    no_checkpoint = getattr(args, "no_checkpoint", False)
+
+    # Get data_dir from arguments or use default
+    data_dir_arg = getattr(args, "data_dir", "dataset")
+
+    # Use specified data_dir or auto-detect if using default
+    if data_dir_arg == "dataset":
+        data_path = get_dataset_directory()  # Auto-detect
+    else:
+        data_path = Path(data_dir_arg)  # Use specified
+
+    data_dir = str(data_path)
     logger.info(f"Using dataset from: {data_dir}")
 
     # Parse CNN channels
-    cnn_channels = tuple(map(int, args.cnn_channels.split(",")))
+    cnn_channels = tuple(map(int, cnn_channels_str.split(",")))
 
     # ========== CREATE CONFIG ==========
     config = RadicalRNNConfig(
         data_dir=data_dir,
-        image_size=args.image_size,
-        num_classes=args.num_classes,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        radical_vocab_size=args.radical_vocab_size,
-        radical_embedding_dim=args.radical_embedding_dim,
-        radical_encoding_type=args.radical_encoding_type,
-        rnn_type=args.rnn_type,
-        rnn_hidden_size=args.rnn_hidden_size,
-        rnn_num_layers=args.rnn_num_layers,
-        rnn_dropout=args.rnn_dropout,
+        image_size=image_size,
+        num_classes=num_classes,
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        radical_vocab_size=radical_vocab_size,
+        radical_embedding_dim=radical_embedding_dim,
+        radical_encoding_type=radical_encoding_type,
+        rnn_type=rnn_type,
+        rnn_hidden_size=rnn_hidden_size,
+        rnn_num_layers=rnn_num_layers,
+        rnn_dropout=rnn_dropout,
         cnn_channels=cnn_channels,
-        optimizer=args.optimizer,
-        scheduler=args.scheduler,
-        model_dir=args.model_dir,
-        results_dir=args.results_dir,
+        optimizer=optimizer_name,
+        scheduler=scheduler_name,
+        model_dir=model_dir,
+        results_dir=results_dir,
     )
 
     # ========== VERIFY GPU ==========
@@ -559,13 +503,17 @@ Examples:
         logger.warning("⚠️  RADICAL RNN LIMITATION DETECTED")
         logger.warning("=" * 70)
         logger.warning(f"Your dataset has {config.num_classes:,} classes")
-        logger.warning(f"But Radical RNN uses only {config.radical_vocab_size} radicals for decomposition")
+        logger.warning(
+            f"But Radical RNN uses only {config.radical_vocab_size} radicals for decomposition"
+        )
         logger.warning("")
         logger.warning("This creates a severe bottleneck where many different characters")
         logger.warning("map to identical radical combinations, making discrimination impossible.")
         logger.warning("")
         logger.warning("RECOMMENDATION:")
-        logger.warning("  Option 1: Use a simpler model for large character sets (CNN, RNN, HierCode)")
+        logger.warning(
+            "  Option 1: Use a simpler model for large character sets (CNN, RNN, HierCode)"
+        )
         logger.warning("  Option 2: Limit to JIS standard characters (~3,000)")
         logger.warning("    $ python train_radical_rnn.py --num-classes 3036")
         logger.warning("  Option 3: Increase radical vocab size (expensive, needs retraining)")
@@ -613,8 +561,8 @@ Examples:
     (X, y), num_classes, train_loader, val_loader = prepare_dataset_and_loaders(
         data_dir=data_dir,
         dataset_fn=create_radical_dataset,
-        batch_size=config.batch_size,
-        sample_limit=args.sample_limit,
+        batch_size=batch_size,
+        sample_limit=sample_limit,
         logger=logger,
     )
 
@@ -634,15 +582,16 @@ Examples:
     save_config(config, config.model_dir, "radical_rnn_config.json")
 
     # ========== INITIALIZE CHECKPOINT MANAGER ==========
-    checkpoint_manager = CheckpointManager(args.checkpoint_dir, "rnn")
+    checkpoint_manager = CheckpointManager(checkpoint_dir, "rnn")
 
     # ========== RESTORE TRAINING HISTORY IF RESUMING ==========
     # If resuming from checkpoint, load the previous training history
-    history_file_path = Path(args.checkpoint_dir) / "training_history_rnn.json"
+    history_file_path = Path(checkpoint_dir) / "training_history_rnn.json"
     if history_file_path.exists():
         try:
             import json
-            with open(history_file_path, "r", encoding="utf-8") as f:
+
+            with open(history_file_path, encoding="utf-8") as f:
                 old_history = json.load(f)
             # Pre-populate trainer.history with data from previous epochs
             for entry in old_history:
@@ -666,8 +615,8 @@ Examples:
         optimizer,
         scheduler,
         device,
-        resume_from=args.resume_from,
-        args_no_checkpoint=args.no_checkpoint,
+        resume_from=resume_from,
+        args_no_checkpoint=no_checkpoint,
     )
     best_val_acc = best_metrics.get("val_accuracy", 0.0)
     start_epoch = max(start_epoch, 1)  # Epoch numbering starts at 1
@@ -726,26 +675,29 @@ Examples:
     # ========== SAVE TRAINING HISTORY FOR CHECKPOINT MANAGER ==========
     # Save history in format expected by copy_best_checkpoint.py
     import json
-    history_file = Path(args.checkpoint_dir) / "training_history_rnn.json"
+
+    history_file = Path(checkpoint_dir) / "training_history_rnn.json"
     history_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     history_for_json = []
     for epoch_idx in range(len(trainer.history["train_loss"])):
-        history_for_json.append({
-            "epoch": epoch_idx + 1,
-            "train": {
-                "loss": float(trainer.history["train_loss"][epoch_idx]),
-                "accuracy": float(trainer.history["train_acc"][epoch_idx]),
-            },
-            "val": {
-                "loss": float(trainer.history["val_loss"][epoch_idx]),
-                "accuracy": float(trainer.history["val_acc"][epoch_idx]),
-            },
-        })
-    
+        history_for_json.append(
+            {
+                "epoch": epoch_idx + 1,
+                "train": {
+                    "loss": float(trainer.history["train_loss"][epoch_idx]),
+                    "accuracy": float(trainer.history["train_acc"][epoch_idx]),
+                },
+                "val": {
+                    "loss": float(trainer.history["val_loss"][epoch_idx]),
+                    "accuracy": float(trainer.history["val_acc"][epoch_idx]),
+                },
+            }
+        )
+
     with open(history_file, "w", encoding="utf-8") as f:
         json.dump(history_for_json, f, indent=2)
-    
+
     logger.info(f"✓ Training history saved to {history_file}")
 
     # ========== CREATE CHARACTER MAPPING ==========

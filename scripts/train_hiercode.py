@@ -41,7 +41,6 @@ from src.lib import (
     save_best_model,
     save_config,
     save_training_results,
-    setup_checkpoint_arguments,
     setup_logger,
     verify_and_setup_gpu,
 )
@@ -465,163 +464,50 @@ class HierCodeTrainer:
 # ============================================================================
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="HierCode (Hierarchical Codebook) Training for Kanji Recognition",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python train_hiercode.py
-  python train_hiercode.py --codebook-total-size 1024 --hierarch-depth 10
-  python train_hiercode.py --multi-hot-k 5 --backbone-type lightweight_cnn --epochs 50
-  python train_hiercode.py --enable-zero-shot --zero-shot-radical-aware --resume-from training/hiercode/checkpoints/checkpoint_epoch_015.pt
-        """,
-    )
+def train_hiercode(args):
+    """
+    Core HierCode training function callable from unified entry point.
 
-    # Dataset (auto-detected from common location)
-    parser.add_argument("--sample-limit", type=int, default=None, help="Limit samples for testing")
+    Args:
+        args: Namespace or dict-like object with training parameters
+    """
+    # Get data_dir from arguments or use default
+    data_dir_arg = getattr(args, "data_dir", "dataset")
 
-    # Model
-    parser.add_argument("--image-size", type=int, default=64, help="Input image size (default: 64)")
-    parser.add_argument(
-        "--num-classes",
-        type=int,
-        default=43528,
-        help="Number of character classes (default: 43,528 for combined ETL6-9 dataset)",
-    )
+    # Use specified data_dir or auto-detect if using default
+    if data_dir_arg == "dataset":
+        data_path = get_dataset_directory()  # Auto-detect
+    else:
+        data_path = Path(data_dir_arg)  # Use specified
 
-    # HierCode parameters
-    parser.add_argument(
-        "--codebook-total-size",
-        type=int,
-        default=1024,
-        help="Total codebook size (default: 1024, must be <= 2^hierarch_depth)",
-    )
-    parser.add_argument(
-        "--codebook-dim", type=int, default=128, help="Codebook dimension (default: 128)"
-    )
-    parser.add_argument(
-        "--hierarch-depth",
-        type=int,
-        default=10,
-        help="Hierarchical tree depth (default: 10 -> 1024 leaves)",
-    )
-    parser.add_argument(
-        "--multi-hot-k",
-        type=int,
-        default=5,
-        help="Number of active codewords (multi-hot k) (default: 5)",
-    )
-    parser.add_argument(
-        "--temperature", type=float, default=0.1, help="Gumbel-softmax temperature (default: 0.1)"
-    )
-
-    # Backbone parameters
-    parser.add_argument(
-        "--backbone-type",
-        type=str,
-        default="lightweight_cnn",
-        choices=["lightweight_cnn"],
-        help="Backbone architecture (default: lightweight_cnn)",
-    )
-    parser.add_argument(
-        "--backbone-output-dim",
-        type=int,
-        default=256,
-        help="Backbone output dimension (default: 256)",
-    )
-
-    # Features
-    parser.add_argument(
-        "--enable-prototype-learning",
-        action="store_true",
-        help="Enable prototype learning for better classification",
-    )
-    parser.add_argument(
-        "--enable-zero-shot",
-        action="store_true",
-        help="Enable zero-shot learning via radical decomposition",
-    )
-    parser.add_argument(
-        "--zero-shot-radical-aware",
-        action="store_true",
-        help="Use radical-aware zero-shot learning",
-    )
-
-    # Training hyperparameters
-    parser.add_argument(
-        "--epochs", type=int, default=30, help="Total training epochs (default: 30)"
-    )
-    parser.add_argument("--batch-size", type=int, default=64, help="Batch size (default: 64)")
-    parser.add_argument(
-        "--learning-rate", type=float, default=0.001, help="Initial learning rate (default: 0.001)"
-    )
-    parser.add_argument(
-        "--weight-decay", type=float, default=1e-4, help="L2 regularization (default: 1e-4)"
-    )
-
-    # Optimizer & scheduler
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="adamw",
-        choices=["adamw", "sgd"],
-        help="Optimizer (default: adamw)",
-    )
-    parser.add_argument(
-        "--scheduler",
-        type=str,
-        default="cosine",
-        choices=["cosine", "step"],
-        help="LR scheduler (default: cosine)",
-    )
-
-    # Output
-    parser.add_argument(
-        "--model-dir",
-        type=str,
-        default="training/hiercode/config",
-        help="Directory to save model config (default: training/hiercode/config)",
-    )
-    parser.add_argument(
-        "--results-dir",
-        type=str,
-        default="training/hiercode/results",
-        help="Directory to save results (default: training/hiercode/results)",
-    )
-
-    # Add checkpoint management arguments (unified across all scripts)
-    setup_checkpoint_arguments(parser, "hiercode")
-
-    args = parser.parse_args()
-
-    # Auto-detect dataset directory
-    data_dir = str(get_dataset_directory())
+    data_dir = str(data_path)
     logger.info(f"Using dataset from: {data_dir}")
 
     # ========== CREATE CONFIG ==========
     config = HierCodeConfig(
         data_dir=data_dir,
-        image_size=args.image_size,
-        num_classes=args.num_classes,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        codebook_total_size=args.codebook_total_size,
-        codebook_dim=args.codebook_dim,
-        hierarch_depth=args.hierarch_depth,
-        multi_hot_k=args.multi_hot_k,
-        temperature=args.temperature,
-        backbone_type=args.backbone_type,
-        backbone_output_dim=args.backbone_output_dim,
-        enable_prototype_learning=args.enable_prototype_learning,
-        enable_zero_shot=args.enable_zero_shot,
-        zero_shot_radical_aware=args.zero_shot_radical_aware,
-        optimizer=args.optimizer,
-        scheduler=args.scheduler,
-        model_dir=args.model_dir,
-        results_dir=args.results_dir,
+        image_size=getattr(args, "image_size", 64),
+        num_classes=getattr(args, "num_classes", 43528),
+        epochs=getattr(args, "epochs", 30),
+        batch_size=getattr(args, "batch_size", 64),
+        learning_rate=getattr(args, "learning_rate", 0.001),
+        weight_decay=getattr(args, "weight_decay", 1e-4),
+        codebook_total_size=getattr(args, "codebook_total_size", 1024),
+        codebook_dim=getattr(args, "codebook_dim", 128),
+        hierarch_depth=getattr(args, "hierarch_depth", 10),
+        multi_hot_k=getattr(args, "multi_hot_k", 5),
+        temperature=getattr(args, "temperature", 0.1),
+        backbone_type=getattr(args, "backbone_type", "lightweight_cnn"),
+        backbone_output_dim=getattr(args, "backbone_output_dim", 256),
+        enable_prototype_learning=getattr(args, "enable_prototype_learning", False),
+        enable_zero_shot=getattr(args, "enable_zero_shot", False),
+        zero_shot_radical_aware=getattr(args, "zero_shot_radical_aware", False),
+        optimizer=getattr(args, "optimizer", "adamw"),
+        scheduler=getattr(args, "scheduler", "cosine"),
+        model_dir=getattr(args, "checkpoint_dir", "training/hiercode/config"),
+        results_dir=getattr(args, "checkpoint_dir", "training/hiercode/checkpoints").replace(
+            "checkpoints", "results"
+        ),
     )
 
     # ========== VERIFY GPU ==========
@@ -637,15 +523,12 @@ Examples:
     logger.info(f"  Codebook: {config.codebook_total_size} codes (depth={config.hierarch_depth})")
     logger.info(f"  Multi-hot k: {config.multi_hot_k} active codewords")
     logger.info(f"  Backbone: {config.backbone_type} (output_dim={config.backbone_output_dim})")
-    logger.info(f"  Prototype learning: {config.enable_prototype_learning}")
-    logger.info(f"  Zero-shot learning: {config.enable_zero_shot}")
-    logger.info(f"  Optimizer: {config.optimizer}, Scheduler: {config.scheduler}")
 
     # ========== LOAD DATA ==========
     logger.info("📂 LOADING DATASET...")
     X, y = load_chunked_dataset(config.data_dir)
     train_loader, val_loader, test_loader = create_data_loaders(
-        X, y, config, sample_limit=args.sample_limit
+        X, y, config, sample_limit=getattr(args, "sample_limit", None)
     )
 
     # ========== CREATE MODEL ==========
@@ -664,7 +547,8 @@ Examples:
     save_config(config, config.model_dir, "hiercode_config.json")
 
     # ========== INITIALIZE CHECKPOINT MANAGER ==========
-    checkpoint_manager = CheckpointManager(args.checkpoint_dir, "hiercode")
+    checkpoint_dir = getattr(args, "checkpoint_dir", "training/hiercode/checkpoints")
+    checkpoint_manager = CheckpointManager(checkpoint_dir, "hiercode")
 
     # ========== TRAINING LOOP ==========
     logger.info("🚀 TRAINING...")
@@ -677,11 +561,11 @@ Examples:
         optimizer,
         scheduler,
         device,
-        resume_from=args.resume_from,
-        args_no_checkpoint=args.no_checkpoint,
+        resume_from=getattr(args, "resume_from", None),
+        args_no_checkpoint=getattr(args, "no_checkpoint", False),
     )
     best_val_acc = best_metrics.get("val_accuracy", 0.0)
-    start_epoch = max(start_epoch, 1)  # Epoch numbering starts at 1
+    start_epoch = max(start_epoch, 1)
 
     for epoch in range(start_epoch, config.epochs + 1):
         train_loss, train_acc = trainer.train_epoch(train_loader, optimizer, criterion, epoch)
@@ -703,7 +587,6 @@ Examples:
         if save_best_model(model, val_acc, best_val_acc, best_model_path):
             best_val_acc = val_acc
 
-        # Save checkpoint after each epoch for resuming later
         checkpoint_manager.save_checkpoint(
             epoch, model, optimizer, scheduler, {"val_accuracy": val_acc}
         )
@@ -749,6 +632,29 @@ Examples:
         logger.warning(f"⚠ Could not create character mapping: {e}")
 
     logger.info("=" * 70)
+
+
+def main():
+    """Legacy main function for direct script execution."""
+    parser = argparse.ArgumentParser(
+        description="HierCode (Hierarchical Codebook) Training for Kanji Recognition",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python train_hiercode.py
+  python train_hiercode.py --codebook-total-size 1024 --hierarch-depth 10
+  python train_hiercode.py --multi-hot-k 5 --backbone-type lightweight_cnn --epochs 50
+        """,
+    )
+
+    from scripts.training_args import add_variant_args_to_parser
+
+    add_variant_args_to_parser(
+        parser, "hiercode", checkpoint_dir_default="training/hiercode/checkpoints"
+    )
+
+    args = parser.parse_args()
+    train_hiercode(args)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ Optimized for ONNX deployment with variable character classes (3,036-4,154 from 
 
 Features:
 - Automatic checkpoint management with resume from latest checkpoint
-- Dataset auto-detection with combined_all_etl priority (3,036-4,154 classes)
+- Dataset auto-detection with combined_all_etl priority (43,427 classes)
 - Scalable classifier head for variable number of classes
 - NVIDIA GPU required with CUDA optimizations enabled
 """
@@ -32,7 +32,6 @@ from src.lib import (
     get_optimizer,
     get_scheduler,
     prepare_dataset_and_loaders,
-    setup_checkpoint_arguments,
     setup_logger,
     verify_and_setup_gpu,
 )
@@ -602,72 +601,34 @@ def create_balanced_loaders(x, y, batch_size, test_size=0.15, val_size=0.15):  #
 # The original function implementation has been removed to avoid duplication
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Train Lightweight Kanji Model for ETL9G")
+def train_cnn(args):
+    """
+    Core CNN training function callable from unified entry point.
 
-    # =========================
-    # TRAINING HYPERPARAMETERS - ADJUSTABLE
-    # =========================
-    # Current default values chosen for balanced training on ETL9G dataset
+    Args:
+        args: Namespace or dict-like object with training parameters
+    """
+    # Get parameters with safe defaults (supports both argparse Namespace and Click dict)
+    batch_size = getattr(args, "batch_size", 64)
+    sample_limit = getattr(args, "sample_limit", None)
+    learning_rate = getattr(args, "learning_rate", 0.001)
+    epochs = getattr(args, "epochs", 30)
+    image_size = getattr(args, "image_size", 64)
+    optimizer_name = getattr(args, "optimizer", "adamw")
+    scheduler_name = getattr(args, "scheduler", "cosine")
+    checkpoint_dir = getattr(args, "checkpoint_dir", "training/cnn/checkpoints")
+    resume_from = getattr(args, "resume_from", None)
+    no_checkpoint = getattr(args, "no_checkpoint", False)
 
-    # Epochs: Number of complete passes through dataset
-    # Current: 30 (moderate training, prevents overfitting on large dataset)
-    # Alternatives: 20 (faster), 50 (longer training), 100 (extensive)
-    parser.add_argument("--epochs", type=int, default=30, help="Number of epochs (default: 30)")
+    # Get data_dir from arguments or use default
+    data_dir_arg = getattr(args, "data_dir", "dataset")
 
-    # Batch size: Number of samples processed together
-    # Current: 64 (good balance for memory and convergence)
-    # GPU memory dependent: 32 (low memory), 128 (high memory), 256 (very high memory)
-    parser.add_argument("--batch-size", type=int, default=64, help="Batch size (default: 64)")
+    # Use specified data_dir or auto-detect if using default
+    if data_dir_arg == "dataset":
+        data_path = get_dataset_directory()  # Auto-detect
+    else:
+        data_path = Path(data_dir_arg)  # Use specified
 
-    # Learning rate: Step size for parameter updates
-    # Current: 0.001 (moderate rate, works well with AdamW + cosine scheduling)
-    # Alternatives: 0.0001 (conservative), 0.01 (aggressive), 0.005 (moderate-high)
-    parser.add_argument("--learning-rate", type=float, default=0.001, help="Learning rate")
-
-    # Image size: Input image dimensions (square)
-    # Current: 64x64 (good balance for kanji detail and computational efficiency)
-    # Alternatives: 32x32 (faster, less detail), 128x128 (slower, more detail)
-    parser.add_argument("--image-size", type=int, default=64, help="Image size")
-    parser.add_argument(
-        "--sample-limit",
-        type=int,
-        default=None,
-        help="Limit samples for testing (e.g., 50000)",
-    )
-
-    # Number of classes: Automatically detected from metadata, but can be overridden
-    # Default: 43,528 (combined ETL6-9 dataset)
-    parser.add_argument(
-        "--num-classes",
-        type=int,
-        default=43528,
-        help="Number of character classes (default: 43,528 for combined ETL6-9 dataset)",
-    )
-
-    # ========== OPTIMIZER & SCHEDULER ==========
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="adamw",
-        choices=["adamw", "sgd"],
-        help="Optimizer (default: adamw)",
-    )
-    parser.add_argument(
-        "--scheduler",
-        type=str,
-        default="cosine",
-        choices=["cosine", "step"],
-        help="Learning rate scheduler (default: cosine)",
-    )
-
-    # Add checkpoint management arguments
-    setup_checkpoint_arguments(parser, "cnn")
-
-    args = parser.parse_args()
-
-    # Auto-detect dataset directory
-    data_path = get_dataset_directory()
     logger.info(f"Using dataset from: {data_path}")
 
     # Read metadata for num_classes
@@ -683,8 +644,8 @@ def main():
     (x, y), num_classes_calc, _, _ = prepare_dataset_and_loaders(
         data_dir=str(data_path),
         dataset_fn=create_etl_dataset,
-        batch_size=args.batch_size,
-        sample_limit=args.sample_limit,
+        batch_size=batch_size,
+        sample_limit=sample_limit,
         logger=logger,
     )
 
@@ -693,14 +654,14 @@ def main():
     logger.info(f"Memory usage: {x.nbytes / (1024**3):.1f} GB")
 
     # Create balanced loaders with stratification
-    train_loader, val_loader, test_loader = create_balanced_loaders(x, y, args.batch_size)
+    train_loader, val_loader, test_loader = create_balanced_loaders(x, y, batch_size)
 
     # Initialize GPU and enable CUDA optimizations
     device = verify_and_setup_gpu()
     device = torch.device(device)
     logger.info(f"Using device: {device}")
 
-    model = LightweightKanjiNet(num_classes, args.image_size)
+    model = LightweightKanjiNet(num_classes, image_size)
     model = model.to(device)
     logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -709,12 +670,12 @@ def main():
 
     # Create config for optimizer/scheduler
     config = CNNConfig(
-        learning_rate=args.learning_rate,
+        learning_rate=learning_rate,
         weight_decay=1e-4,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        optimizer=args.optimizer,
-        scheduler=args.scheduler,
+        epochs=epochs,
+        batch_size=batch_size,
+        optimizer=optimizer_name,
+        scheduler=scheduler_name,
     )
 
     # Initialize optimizer and scheduler using unified functions
@@ -722,10 +683,10 @@ def main():
     scheduler = get_scheduler(optimizer, config)
 
     # Initialize checkpoint manager
-    checkpoint_manager = CheckpointManager(args.checkpoint_dir, "cnn")
+    checkpoint_manager = CheckpointManager(checkpoint_dir, "cnn")
 
     # Initialize trainer with results directory
-    results_dir = Path(args.checkpoint_dir).parent / "results"
+    results_dir = Path(checkpoint_dir).parent / "results"
     trainer = ProgressiveTrainer(model, device, num_classes, results_dir=str(results_dir))
 
     # Check for existing checkpoint and resume if available
@@ -737,25 +698,25 @@ def main():
         optimizer,
         scheduler,
         device,
-        resume_from=args.resume_from,
-        args_no_checkpoint=args.no_checkpoint,
+        resume_from=resume_from,
+        args_no_checkpoint=no_checkpoint,
     )
     best_metrics.get("val_accuracy", 0.0)
 
     # Train model
-    logger.info("一Starting training...")
+    logger.info("Starting training...")
     trainer.train(
         train_loader,
         val_loader,
-        epochs=args.epochs,
-        learning_rate=args.learning_rate,
+        epochs=epochs,
+        learning_rate=learning_rate,
         checkpoint_manager=checkpoint_manager,
         start_epoch=start_epoch,
     )
 
     # Test final model
     test_loss, test_acc = trainer.validate(test_loader, nn.CrossEntropyLoss())
-    logger.info(f"一Final test accuracy: {test_acc:.2f}%")
+    logger.info(f"Final test accuracy: {test_acc:.2f}%")
 
     # ========== CREATE CHARACTER MAPPING ==========
     logger.info("\n📊 Creating character mapping for inference...")
@@ -780,6 +741,19 @@ def main():
             logger.warning(f"⚠ Character mapping creation failed: {result.stderr}")
     except Exception as e:
         logger.warning(f"⚠ Could not create character mapping: {e}")
+
+
+def main():
+    """Legacy main function for direct script execution."""
+    from scripts.training_args import add_variant_args_to_parser
+
+    parser = argparse.ArgumentParser(description="Train Lightweight Kanji Model for ETL9G")
+
+    # Add all arguments for CNN variant from centralized config
+    add_variant_args_to_parser(parser, "cnn", checkpoint_dir_default="training/cnn/checkpoints")
+
+    args = parser.parse_args()
+    train_cnn(args)
 
 
 if __name__ == "__main__":
