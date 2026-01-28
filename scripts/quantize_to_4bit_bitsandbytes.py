@@ -20,22 +20,17 @@ import torch.nn as nn
 # Add parent directory to path to import src/lib
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.lib import setup_logger, verify_and_setup_gpu
+from src.lib import (
+    calculate_model_size,
+    load_model_checkpoint,
+    setup_logger,
+    verify_and_setup_gpu,
+)
 
 logger = setup_logger(__name__)
 
 # Suppress PyTorch's TypedStorage deprecation warning (internal, not in user code)
 warnings.filterwarnings("ignore", category=UserWarning, message=".*TypedStorage.*")
-
-# Add scripts to path for imports
-sys.path.append(str(Path(__file__).parent))
-from hiercode_higita_enhancement import HierCodeWithHiGITA  # noqa: E402
-from train_cnn_model import LightweightKanjiNet  # noqa: E402
-from train_hiercode import HierCodeClassifier  # noqa: E402
-from train_qat import QuantizableLightweightKanjiNet  # noqa: E402
-from train_radical_rnn import RadicalRNNClassifier  # noqa: E402
-from train_rnn import KanjiRNN  # noqa: E402
-from train_vit import VisionTransformer  # noqa: E402
 
 
 def quantize_model_4bit_nf4(
@@ -161,16 +156,6 @@ def quantize_model_4bit_gptq(
     return model
 
 
-def calculate_model_size(model: nn.Module, include_gradients: bool = False) -> float:
-    """Calculate model size in bytes."""
-    size = 0
-    for param in model.parameters():
-        size += param.numel() * param.element_size()
-        if include_gradients and param.grad is not None:
-            size += param.grad.numel() * param.grad.element_size()
-    return size
-
-
 def load_model_for_quantization(
     model_path: str,
     model_type: str,
@@ -191,68 +176,14 @@ def load_model_for_quantization(
     if not model_path.exists():
         return None, None
 
-    # Infer num_classes from checkpoint
-    checkpoint = torch.load(model_path, map_location="cpu")
-
-    num_classes = None
-    for key in checkpoint.keys():
-        if "classifier.weight" in key:
-            num_classes = checkpoint[key].shape[0]
-            break
-
-    if num_classes is None:
-        for key in checkpoint.keys():
-            if "linear.weight" in key or "fc.weight" in key:
-                num_classes = checkpoint[key].shape[0]
-                break
-
-    if num_classes is None:
-        num_classes = 3036
-
-    # Create and load model
-    from optimization_config import (
-        CNNConfig,
-        HierCodeConfig,
-        QATConfig,
-        RadicalRNNConfig,
-        RNNConfig,
-        ViTConfig,
-    )
-
-    if model_type == "cnn":
-        config = CNNConfig(num_classes=num_classes)
-        model = LightweightKanjiNet(num_classes=num_classes)
-    elif model_type == "rnn":
-        config = RNNConfig(num_classes=num_classes)
-        model = KanjiRNN(num_classes=num_classes)
-    elif model_type == "hiercode":
-        config = HierCodeConfig(num_classes=num_classes)
-        model = HierCodeClassifier(num_classes=num_classes, config=config)  # type: ignore
-    elif model_type == "hiercode-higita":
-        # HierCode with Hi-GITA enhancement (3-level hierarchical + contrastive learning)
-        model = HierCodeWithHiGITA(num_classes=num_classes, use_higita_enhancement=True)
-    elif model_type == "qat":
-        config = QATConfig(num_classes=num_classes)
-        model = QuantizableLightweightKanjiNet(num_classes=num_classes)
-    elif model_type == "radical-rnn":
-        config = RadicalRNNConfig(num_classes=num_classes)
-        model = RadicalRNNClassifier(num_classes=num_classes, config=config)
-    elif model_type == "vit":
-        config = ViTConfig(num_classes=num_classes)
-        model = VisionTransformer(num_classes=num_classes, config=config)
-    else:
-        return None, None
-
-    # Load state dict
+    # Use library function to load model checkpoint
     try:
-        model.load_state_dict(checkpoint, strict=True)
-    except RuntimeError:
-        model.load_state_dict(checkpoint, strict=False)
-
-    model = model.to(device)
-    model.eval()
-
-    return model, num_classes
+        model, num_classes, _info = load_model_checkpoint(str(model_path), model_type)
+        model = model.to(device)
+        model.eval()
+        return model, num_classes
+    except Exception:
+        return None, None
 
 
 def save_4bit_model(

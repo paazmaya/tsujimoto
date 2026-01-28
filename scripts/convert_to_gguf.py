@@ -19,7 +19,6 @@ import json
 import os
 import struct
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -29,38 +28,30 @@ import torch
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.lib import generate_export_path, infer_model_type, setup_logger
+from src.lib import (
+    generate_export_path,
+    get_model_date,
+    infer_model_type,
+    infer_num_classes_from_state_dict,
+    load_model_checkpoint,
+    quantize_tensor_to_f16,
+    quantize_tensor_to_q4,
+    quantize_tensor_to_q8,
+    setup_logger,
+)
 
+logger = setup_logger(__name__)
 logger = setup_logger(__name__)
 
 try:
-    from train_cnn_model import LightweightKanjiNet
+    from train_cnn_model import LightweightKanjiNet  # noqa: F401
 except ImportError:
     sys.path.append(str(Path(__file__).parent))
-    from train_cnn_model import LightweightKanjiNet
-
-
-def get_model_date(model_path: str) -> str:
-    """Extract the date when the model was created from checkpoint file metadata.
-
-    Returns ISO date string (YYYY-MM-DD) from model's modification time.
-    """
-    try:
-        if Path(model_path).exists():
-            mod_time = os.path.getmtime(model_path)
-            date_obj = datetime.fromtimestamp(mod_time)
-            return date_obj.strftime("%Y-%m-%d")
-    except Exception as e:
-        logger.warning(f"Could not extract date from model: {e}")
-
-    return datetime.now().strftime("%Y-%m-%d")
+    from train_cnn_model import LightweightKanjiNet  # noqa: F401
 
 
 def infer_num_classes_from_checkpoint(checkpoint_path: str) -> int:
-    """Infer number of classes from checkpoint weights.
-
-    Looks at the output layer weights to determine num_classes.
-    """
+    """Infer number of classes from checkpoint weights using lib function."""
     try:
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
@@ -72,23 +63,8 @@ def infer_num_classes_from_checkpoint(checkpoint_path: str) -> int:
         else:
             state_dict = checkpoint
 
-        # Find final classifier output layer (classifier.4.weight for final output)
-        if "classifier.4.weight" in state_dict:
-            num_classes = state_dict["classifier.4.weight"].shape[0]
-            logger.info(
-                f"Inferred num_classes={num_classes} from checkpoint layer 'classifier.4.weight'"
-            )
-            return num_classes
-
-        # Fallback: find any classifier output layer
-        for key in sorted(state_dict.keys()):
-            if "classifier" in key and "weight" in key and len(state_dict[key].shape) == 2:
-                num_classes = state_dict[key].shape[0]
-                logger.info(f"Inferred num_classes={num_classes} from checkpoint layer '{key}'")
-                return num_classes
-
-        logger.warning("Could not infer num_classes from checkpoint")
-        return 43427  # Default to combined dataset
+        num_classes = infer_num_classes_from_state_dict(state_dict)
+        return num_classes
 
     except Exception as e:
         logger.error(f"Error inferring num_classes: {e}")
@@ -96,26 +72,12 @@ def infer_num_classes_from_checkpoint(checkpoint_path: str) -> int:
 
 
 def load_model_for_conversion(model_path: str, image_size: int = 64):
-    """Load model from checkpoint and return (model, num_classes)."""
+    """Load model from checkpoint using lib function."""
     try:
         logger.info(f"📁 Loading model from: {model_path}")
 
-        num_classes = infer_num_classes_from_checkpoint(model_path)
-
-        model = LightweightKanjiNet(num_classes=num_classes, image_size=image_size)
-
-        checkpoint = torch.load(model_path, map_location="cpu")
-
-        if isinstance(checkpoint, dict):
-            if "model_state_dict" in checkpoint:
-                state_dict = checkpoint["model_state_dict"]
-            else:
-                state_dict = checkpoint
-        else:
-            state_dict = checkpoint
-
-        model.load_state_dict(state_dict)
-        model.eval()
+        # Use lib function for automatic model type detection
+        model, num_classes, _info = load_model_checkpoint(model_path, "cnn")
 
         logger.info("✓ Loaded model weights from checkpoint")
         return model, num_classes
@@ -126,60 +88,18 @@ def load_model_for_conversion(model_path: str, image_size: int = 64):
 
 
 def quantize_tensor_q4(tensor: torch.Tensor) -> tuple:
-    """Quantize a tensor to Q4 (4-bit) format.
-
-    Returns (quantized_bytes, scale, min_val)
-    """
-    # Reshape to 2D for processing
-    orig_shape = tensor.shape
-    tensor_flat = tensor.float().cpu().flatten().numpy()
-
-    # Calculate quantization parameters
-    min_val = float(tensor_flat.min())
-    max_val = float(tensor_flat.max())
-
-    # Avoid division by zero
-    if max_val == min_val:
-        scale = 1.0
-    else:
-        scale = (max_val - min_val) / 15.0  # 4-bit has 16 values (0-15)
-
-    # Quantize to 4-bit (pack 2 values per byte)
-    quantized = np.round((tensor_flat - min_val) / scale).clip(0, 15).astype(np.uint8)
-
-    # Pack two 4-bit values into one byte
-    packed = np.zeros(len(quantized) // 2 + (len(quantized) % 2), dtype=np.uint8)
-    for i in range(0, len(quantized) - 1, 2):
-        packed[i // 2] = (quantized[i] << 4) | quantized[i + 1]
-
-    if len(quantized) % 2:
-        packed[-1] = quantized[-1] << 4
-
-    return packed, scale, min_val, orig_shape
+    """Quantize a tensor to Q4 (4-bit) format using lib function."""
+    return quantize_tensor_to_q4(tensor)
 
 
 def quantize_tensor_q8(tensor: torch.Tensor) -> tuple:
-    """Quantize a tensor to Q8 (8-bit) format."""
-    orig_shape = tensor.shape
-    tensor_flat = tensor.float().cpu().flatten().numpy()
-
-    min_val = float(tensor_flat.min())
-    max_val = float(tensor_flat.max())
-
-    if max_val == min_val:
-        scale = 1.0
-    else:
-        scale = (max_val - min_val) / 255.0
-
-    quantized = np.round((tensor_flat - min_val) / scale).clip(0, 255).astype(np.uint8)
-
-    return quantized, scale, min_val, orig_shape
+    """Quantize a tensor to Q8 (8-bit) format using lib function."""
+    return quantize_tensor_to_q8(tensor)
 
 
 def quantize_tensor_f16(tensor: torch.Tensor) -> tuple:
-    """Convert tensor to F16 (16-bit float) format."""
-    orig_shape = tensor.shape
-    return tensor.half().cpu().numpy().astype(np.float16), 1.0, 0.0, orig_shape
+    """Convert tensor to F16 (16-bit float) using lib function."""
+    return quantize_tensor_to_f16(tensor)
 
 
 def convert_to_gguf(

@@ -169,18 +169,27 @@ uv run python scripts/export_model_to_onnx.py --model-path training/qat/best_qat
 ```
 
 **Output Format**: All exported models include the ISO date (YYYY-MM-DD) from the training completion date:
+
 - `cnn_2026-01-28_opset18.onnx` - Float32 ONNX export
 - `hiercode_2026-01-28_int8.pth` - INT8 quantized (PyTorch format)
 - `rnn_2026-01-28_4bit_nf4_opset18.onnx` - 4-bit NF4 ONNX export
 - `qat_2026-01-28_4bit_fp4_double_opset18.onnx` - 4-bit FP4 + double quantization
 
-**Legacy scripts** (deprecated, use `export_model_to_onnx.py` instead):
-- `export_to_onnx.py` - Replaced by unified `export_model_to_onnx.py`
-- `export_quantized_to_onnx.py` - Replaced by unified `export_model_to_onnx.py --quantization int8`
-- `export_4bit_quantized_onnx.py` - Replaced by unified `export_model_to_onnx.py --quantization 4bit:*`
-- `convert_int8_pytorch_to_quantized_onnx.py` - Replaced by unified `export_model_to_onnx.py`
+**Consolidated Export Scripts** (unified functionality):
 
-```| Parameter          | Type  | Default                         | Notes                       |
+- `scripts/convert_to_onnx.py` - ONNX export with flexible quantization options (replaces: export_to_onnx.py, export_quantized_to_onnx.py, export_4bit_quantized_onnx.py, export_model_to_onnx.py, convert_int8_pytorch_to_quantized_onnx.py)
+- `scripts/convert_to_safetensors.py` - SafeTensors format with quantization
+- `scripts/convert_to_gguf.py` - GGUF format for llama.cpp with quantization
+
+**Shared Conversion Utilities** (in `src/lib/conversion.py`):
+
+- `get_model_date()` - Extract model creation date from file metadata
+- `dequantize_state_dict()` - Convert INT8 tensors back to float32 for ONNX
+- `infer_num_classes_from_state_dict()` - Automatically detect output classes from model weights
+- `load_num_classes_from_config()` - Load num_classes from configuration JSON
+- `load_model_checkpoint()` - Comprehensive checkpoint loader with automatic architecture selection
+
+````| Parameter          | Type  | Default                         | Notes                       |
 | ------------------ | ----- | ------------------------------- | --------------------------- |
 | `--epochs`         | int   | 30                              | Training epochs             |
 | `--batch-size`     | int   | 64\*                            | \*ViT=256, Hi-GITA=32       |
@@ -219,7 +228,7 @@ uv run python scripts/quantize_model.py --model-path training/hiercode_higita/be
 
 # Supported model types: hiercode, hiercode-higita, cnn, qat, rnn, radical-rnn, vit
 # Note: --model-type is REQUIRED. Omitting it will cause an error.
-```
+````
 
 **Supports 4 additional RNN Architectures:**
 
@@ -460,22 +469,23 @@ uv run python scripts/convert_to_safetensors.py --model-path training/cnn/best_k
 # Export to SafeTensors with 4-bit FP4 + double quantization (extreme compression)
 uv run python scripts/convert_to_safetensors.py --model-path training/cnn/best_kanji_model.pth --quantization 4bit:fp4:double
 
-# Quantize INT8 PyTorch to ultra-lightweight ONNX
-uv run python scripts/convert_int8_pytorch_to_quantized_onnx.py --model-path training/hiercode/quantized_hiercode_int8.pth
+# Convert INT8 PyTorch to ONNX with quantization
+uv run python scripts/convert_to_onnx.py --model-path training/hiercode/quantized_hiercode_int8.pth --quantization int8
 ```
 
 #### SafeTensors Quantization Options
 
 **Compression Results** (for 43,427 class model on ETL6-9):
 
-| Format | Size | Compression | Ratio | Use Case |
-|--------|------|-------------|-------|----------|
-| Float32 | 344.33 MB | — | 1.0x | Development, highest accuracy |
-| INT8 | 86.75 MB | 74.8% | **4.0x** | CPU inference, balanced |
-| 4-bit NF4 | 43.81 MB | 87.3% | **7.9x** | GPU inference, production ⭐ |
-| 4-bit FP4 | 43.81 MB | 87.3% | **7.9x** | Edge/mobile, fastest |
+| Format    | Size      | Compression | Ratio    | Use Case                      |
+| --------- | --------- | ----------- | -------- | ----------------------------- |
+| Float32   | 344.33 MB | —           | 1.0x     | Development, highest accuracy |
+| INT8      | 86.75 MB  | 74.8%       | **4.0x** | CPU inference, balanced       |
+| 4-bit NF4 | 43.81 MB  | 87.3%       | **7.9x** | GPU inference, production ⭐  |
+| 4-bit FP4 | 43.81 MB  | 87.3%       | **7.9x** | Edge/mobile, fastest          |
 
 **Float32 (Baseline)**
+
 ```ps1
 # No quantization - highest accuracy, largest file
 uv run python scripts/convert_to_safetensors.py --model-path training/cnn/results/best_kanji_model.pth
@@ -483,6 +493,7 @@ uv run python scripts/convert_to_safetensors.py --model-path training/cnn/result
 ```
 
 **INT8 (4x Compression)**
+
 ```ps1
 # Quantize weights to 8-bit integers with scale/offset storage
 uv run python scripts/convert_to_safetensors.py --model-path training/cnn/results/best_kanji_model.pth --quantization int8 --verify
@@ -493,18 +504,21 @@ uv run python scripts/convert_to_safetensors.py --model-path training/cnn/result
 **4-bit Quantization (8x Compression - Recommended)**
 
 NF4 (Best accuracy/size trade-off):
+
 ```ps1
 uv run python scripts/convert_to_safetensors.py --model-path training/cnn/results/best_kanji_model.pth --quantization 4bit:nf4
 # Output: kanji_model_combined_64x64_43427classes_2026-01-28_4bit_nf4.safetensors (43.81 MB)
 ```
 
 FP4 (Fastest inference):
+
 ```ps1
 uv run python scripts/convert_to_safetensors.py --model-path training/cnn/results/best_kanji_model.pth --quantization 4bit:fp4
 # Output: kanji_model_combined_64x64_43427classes_2026-01-28_4bit_fp4.safetensors (43.81 MB)
 ```
 
 4-bit with Double Quantization (Extreme compression):
+
 ```ps1
 uv run python scripts/convert_to_safetensors.py --model-path training/cnn/results/best_kanji_model.pth --quantization 4bit:nf4:double
 uv run python scripts/convert_to_safetensors.py --model-path training/cnn/results/best_kanji_model.pth --quantization 4bit:fp4:double
@@ -514,6 +528,7 @@ uv run python scripts/convert_to_safetensors.py --model-path training/cnn/result
 **Filename Format**
 
 All SafeTensors exports include the ISO date (YYYY-MM-DD) in the filename:
+
 - `kanji_model_combined_64x64_43427classes_2026-01-28.safetensors` - Float32 baseline
 - `kanji_model_combined_64x64_43427classes_2026-01-28_int8.safetensors` - INT8 quantized
 - `kanji_model_combined_64x64_43427classes_2026-01-28_bfloat16.safetensors` - bfloat16 (F16 equivalent)
@@ -534,24 +549,26 @@ GGUF is a lightweight quantized format used by [llama.cpp](https://github.com/gg
 
 ### GGUF Quantization Levels
 
-| Format | Size | Compression | Use Case |
-|--------|------|-------------|----------|
-| F32 | 344.33 MB | 1.0x | Development, reference |
-| F16 | 172.16 MB | 2.0x | CPU inference, fast |
-| Q8_0 | ~86 MB | 4.0x | High accuracy, CPU |
-| Q4_K | 43.05 MB | **8.0x** | Recommended, good balance ⭐ |
-| Q3_K | ~29 MB | 12.0x | Mobile devices |
-| Q2_K | ~22 MB | 16.0x | Ultra-lightweight |
+| Format | Size      | Compression | Use Case                     |
+| ------ | --------- | ----------- | ---------------------------- |
+| F32    | 344.33 MB | 1.0x        | Development, reference       |
+| F16    | 172.16 MB | 2.0x        | CPU inference, fast          |
+| Q8_0   | ~86 MB    | 4.0x        | High accuracy, CPU           |
+| Q4_K   | 43.05 MB  | **8.0x**    | Recommended, good balance ⭐ |
+| Q3_K   | ~29 MB    | 12.0x       | Mobile devices               |
+| Q2_K   | ~22 MB    | 16.0x       | Ultra-lightweight            |
 
 ### GGUF Export Examples
 
 **F16 (16-bit float, 2x compression)**
+
 ```ps1
 uv run python scripts/convert_to_gguf.py --model-path training/cnn/checkpoints/checkpoint_best.pt --quantization f16
 # Output: kanji_model_combined_64x64_43427classes_2026-01-28_f16.gguf (172.16 MB)
 ```
 
 **Q4_K (4-bit K-quantization, recommended)**
+
 ```ps1
 uv run python scripts/convert_to_gguf.py --model-path training/cnn/checkpoints/checkpoint_best.pt --quantization q4_k
 # Output: kanji_model_combined_64x64_43427classes_2026-01-28_q4_k.gguf (43.05 MB)
@@ -559,6 +576,7 @@ uv run python scripts/convert_to_gguf.py --model-path training/cnn/checkpoints/c
 ```
 
 **Q3_K (3-bit K-quantization, mobile)**
+
 ```ps1
 uv run python scripts/convert_to_gguf.py --model-path training/cnn/checkpoints/checkpoint_best.pt --quantization q3_k
 # Output: ~29 MB GGUF file
@@ -584,6 +602,7 @@ python create_training_visualizations.py training/cnn/results/training_progress.
 ```
 
 **Output**: Creates a PNG visualization showing:
+
 - Training and validation loss curves
 - Training and validation accuracy curves
 - All epochs of training data

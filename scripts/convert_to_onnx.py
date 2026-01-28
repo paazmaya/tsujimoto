@@ -33,54 +33,19 @@ import torch.nn as nn
 # Add parent directory to path to import src/lib
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.lib import setup_logger
+from src.lib import (
+    load_model_checkpoint,
+    setup_logger,
+)
 
 logger = setup_logger(__name__)
 
 # Suppress PyTorch's TypedStorage deprecation warning (internal, not in user code)
 warnings.filterwarnings("ignore", category=UserWarning, message=".*TypedStorage.*")
 
-# Import utility functions
-try:
-    from src.lib import generate_export_path
-    from src.lib import infer_model_type as lib_infer_model_type
-except ImportError:
-
-    def generate_export_path(model_type: str) -> Path:
-        """Generate export directory path"""
-        return Path.cwd() / "exports" / model_type
-
-    def lib_infer_model_type(base_name_or_path: str, default: str = "cnn") -> str:
-        """Infer model type from path"""
-        path_lower = str(base_name_or_path).lower()
-        for model_type in ["hiercode", "cnn", "rnn", "vit", "qat", "radical"]:
-            if model_type in path_lower:
-                return model_type
-        return default
-
-
-# Wrapper with consistent signature
-def infer_model_type(path: str, default: str = "unknown") -> str:
-    """Infer model type from path"""
-    return lib_infer_model_type(path, default if default != "unknown" else "cnn")
-
 
 # Import all model classes
 from train_cnn_model import LightweightKanjiNet  # noqa: E402
-from train_hiercode import HierCodeClassifier  # noqa: E402
-from train_qat import QuantizableLightweightKanjiNet  # noqa: E402
-from train_radical_rnn import RadicalRNNClassifier  # noqa: E402
-from train_rnn import KanjiRNN  # noqa: E402
-from train_vit import VisionTransformer  # noqa: E402
-
-from src.lib.config import (  # noqa: E402
-    CNNConfig,
-    HierCodeConfig,
-    QATConfig,
-    RadicalRNNConfig,
-    RNNConfig,
-    ViTConfig,
-)
 
 
 class LightweightKanjiNetWithPooling(LightweightKanjiNet):
@@ -161,125 +126,6 @@ def quantize_onnx_int8(
     except Exception as e:
         logger.error("✗ INT8 quantization failed: %s", str(e))
         return None, None
-
-
-def dequantize_state_dict(state_dict: dict) -> dict:
-    """Dequantize INT8 tensors for ONNX compatibility."""
-
-    dequantized_state = {}
-    quantized_count = 0
-
-    for key, value in state_dict.items():
-        if hasattr(value, "dequantize"):
-            dequantized_state[key] = value.dequantize()
-            quantized_count += 1
-        else:
-            dequantized_state[key] = value
-
-    if quantized_count > 0:
-        logger.info(f"✓ Dequantized {quantized_count} tensors for ONNX compatibility")
-
-    return dequantized_state
-
-
-def load_model_checkpoint(model_path: str, model_type: str) -> Tuple[torch.nn.Module, int, dict]:
-    """Load model from checkpoint and infer num_classes"""
-
-    model_path_obj = Path(model_path)
-    if not model_path_obj.exists():
-        logger.error(f"✗ Model path not found: {model_path}")
-        raise FileNotFoundError(f"Model not found: {model_path}")
-
-    logger.info("→ Loading model from %s...", model_path)
-
-    # Load checkpoint
-    checkpoint = torch.load(model_path_obj, map_location="cpu")
-
-    # Extract model_state_dict if checkpoint is wrapped
-    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-        model_state_dict = checkpoint["model_state_dict"]
-    else:
-        model_state_dict = checkpoint
-
-    # Check if model is INT8 quantized
-    is_quantized = any(hasattr(v, "dequantize") for v in model_state_dict.values())
-
-    # Infer num_classes from OUTPUT classifier weight
-    num_classes = None
-    classifier_weights = {}
-
-    for key in model_state_dict.keys():
-        if (
-            isinstance(model_state_dict[key], torch.Tensor)
-            and "classifier" in key
-            and "weight" in key
-        ):
-            parts = key.split(".")
-            if len(parts) >= 2 and parts[1].isdigit():
-                layer_idx = int(parts[1])
-                classifier_weights[layer_idx] = (key, model_state_dict[key].shape[0])
-
-    # Use highest indexed classifier layer
-    if classifier_weights:
-        max_layer = max(classifier_weights.keys())
-        key, num_classes = classifier_weights[max_layer]
-        logger.info(f"  → Found output classifier in '{key}': {num_classes} classes")
-
-    if num_classes is None:
-        # Fallback: try config file
-        config_path = model_path_obj.parent / f"{model_type}_config.json"
-        if config_path.exists():
-            with open(config_path, encoding="utf-8") as f:
-                config_dict = json.load(f)
-                num_classes = config_dict.get("num_classes", 3036)
-                logger.info(f"  → Found in config.json: {num_classes} classes")
-        else:
-            num_classes = 3036
-            logger.warning(f"  → Using default: {num_classes} classes")
-
-    # Create model based on type
-    if model_type == "hiercode":
-        config = HierCodeConfig(num_classes=num_classes)
-        model = HierCodeClassifier(num_classes=num_classes, config=config)
-    elif model_type == "hiercode-higita":
-        config = HierCodeConfig(num_classes=num_classes)
-        from train_hiercode_higita import HierCodeWithHiGITA
-
-        model = HierCodeWithHiGITA(num_classes=num_classes)
-    elif model_type == "cnn":
-        config = CNNConfig(num_classes=num_classes)
-        model = LightweightKanjiNet(num_classes=num_classes)
-    elif model_type == "qat":
-        config = QATConfig(num_classes=num_classes)
-        model = QuantizableLightweightKanjiNet(num_classes=num_classes)
-    elif model_type == "rnn":
-        config = RNNConfig(num_classes=num_classes)
-        model = KanjiRNN(num_classes=num_classes)
-    elif model_type == "radical-rnn":
-        config = RadicalRNNConfig(num_classes=num_classes)
-        model = RadicalRNNClassifier(num_classes=num_classes, config=config)
-    elif model_type == "vit":
-        config = ViTConfig(num_classes=num_classes)
-        model = VisionTransformer(num_classes=num_classes, config=config)
-    else:
-        raise ValueError(f"Unknown model type: {model_type}")
-
-    # Handle quantized models - dequantize for ONNX compatibility
-    state_dict_to_load = model_state_dict
-    if is_quantized:
-        logger.info("→ Model is INT8 quantized, dequantizing for ONNX export...")
-        state_dict_to_load = dequantize_state_dict(model_state_dict)
-
-    # Load weights
-    try:
-        model.load_state_dict(state_dict_to_load)
-    except RuntimeError:
-        model.load_state_dict(state_dict_to_load, strict=False)
-        logger.warning("⚠ Loaded model with strict=False (some keys may not match)")
-
-    model.eval()
-
-    return model, num_classes, {"is_quantized": is_quantized, "original_model": model_state_dict}
 
 
 def quantize_to_int8(model: torch.nn.Module) -> torch.nn.Module:

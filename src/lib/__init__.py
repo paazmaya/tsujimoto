@@ -9,8 +9,10 @@ Provides reusable components for:
 - Dataset loading and preprocessing
 - Checkpoint management
 - ONNX conversion utilities
+- Model conversion and export utilities
 """
 
+# Model conversion utilities
 # Logging utilities
 # Checkpoint management
 from .checkpoint import CheckpointManager, setup_checkpoint_arguments
@@ -24,6 +26,23 @@ from .config import (
     RadicalRNNConfig,
     RNNConfig,
     ViTConfig,
+)
+from .conversion import (
+    calculate_compression_ratio,
+    calculate_model_size,
+    dequantize_state_dict,
+    format_export_filename,
+    get_model_date,
+    infer_num_classes_from_state_dict,
+    load_model_checkpoint,
+    load_num_classes_from_config,
+    log_conversion_summary,
+    quantize_model_int8,
+    quantize_state_dict_int8,
+    quantize_tensor_to_f16,
+    quantize_tensor_to_q4,
+    quantize_tensor_to_q8,
+    save_model_with_metadata,
 )
 
 # Dataset utilities
@@ -92,6 +111,22 @@ __all__ = [
     "check_gpu_availability",
     "check_virtual_environment",
     "get_system_info",
+    # Conversion
+    "get_model_date",
+    "dequantize_state_dict",
+    "infer_num_classes_from_state_dict",
+    "load_num_classes_from_config",
+    "load_model_checkpoint",
+    "calculate_model_size",
+    "calculate_compression_ratio",
+    "quantize_model_int8",
+    "quantize_state_dict_int8",
+    "quantize_tensor_to_q4",
+    "quantize_tensor_to_q8",
+    "quantize_tensor_to_f16",
+    "save_model_with_metadata",
+    "format_export_filename",
+    "log_conversion_summary",
     # Models
     "SUPPORTED_MODEL_TYPES",
     "TRAINING_STRUCTURE",

@@ -11,9 +11,7 @@ Supports:
 
 import argparse
 import json
-import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import torch
@@ -22,7 +20,13 @@ from safetensors.torch import save_file
 # Add parent directory to path to import src/lib
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.lib import generate_export_path, infer_model_type, setup_logger
+from src.lib import (
+    generate_export_path,
+    get_model_date,
+    infer_model_type,
+    quantize_state_dict_int8,
+    setup_logger,
+)
 
 logger = setup_logger(__name__)
 
@@ -32,24 +36,6 @@ except ImportError:
     # Handle case when running from scripts directory
     sys.path.append(str(Path(__file__).parent))
     from train_cnn_model import LightweightKanjiNet
-
-
-def get_model_date(model_path: str) -> str:
-    """Extract the date when the model was created from checkpoint file metadata.
-
-    Returns ISO date string (YYYY-MM-DD) from model's modification time.
-    """
-    try:
-        if Path(model_path).exists():
-            # Get file modification time
-            mod_time = os.path.getmtime(model_path)
-            date_obj = datetime.fromtimestamp(mod_time)
-            return date_obj.strftime("%Y-%m-%d")
-    except Exception as e:
-        logger.warning(f"Could not extract date from model: {e}")
-
-    # Fallback to current date if extraction fails
-    return datetime.now().strftime("%Y-%m-%d")
 
 
 def quantize_state_dict_to_bfloat16(state_dict: dict) -> tuple:
@@ -79,47 +65,12 @@ def quantize_state_dict_to_bfloat16(state_dict: dict) -> tuple:
 
 
 def quantize_state_dict_to_int8(state_dict: dict) -> tuple:
-    """Actually quantize state dict to INT8 format for compression.
+    """Quantize state dict to INT8 format for compression.
 
-    Returns tuple of (quantized_state_dict, metadata) where weights are stored as int8
-    and scale/offset are stored separately for dequantization.
+    Uses library function and wraps metadata.
     """
-    logger.info("  → Applying INT8 quantization...")
-    try:
-        quantized_state = {}
-
-        for key, value in state_dict.items():
-            if "weight" in key and value.dim() == 2:  # Linear layer weights
-                # Compute quantization parameters
-                min_val = value.min()
-                max_val = value.max()
-                scale = (max_val - min_val) / 255.0
-
-                # Quantize to int8 range [0, 255] then shift to [-128, 127]
-                quantized = torch.round((value - min_val) / scale).clamp(0, 255).to(torch.uint8)
-
-                # Store quantized weights
-                quantized_state[key] = quantized
-
-                # Store scale and offset for dequantization
-                scale_key = key.replace("weight", "weight_scale")
-                zero_key = key.replace("weight", "weight_zero")
-                quantized_state[scale_key] = scale.unsqueeze(0)
-                quantized_state[zero_key] = min_val.unsqueeze(0)
-
-            elif "bias" in key:
-                # Keep biases in float32 (they're small)
-                quantized_state[key] = value
-            else:
-                # Keep other parameters unchanged
-                quantized_state[key] = value
-
-        logger.info(f"    ✓ INT8 quantization complete - {len(quantized_state)} tensors")
-        return quantized_state, {"quantization_type": "int8"}
-
-    except Exception as e:
-        logger.error(f"    ✗ INT8 quantization failed: {e}")
-        raise
+    quantized_state, metadata = quantize_state_dict_int8(state_dict)
+    return quantized_state, metadata
 
 
 def quantize_state_dict_to_4bit(
