@@ -396,9 +396,9 @@ class TestConversionScripts:
     def test_export_to_onnx_hiercode(self):
         """Test export_to_onnx_hiercode module."""
         try:
-            from scripts import export_to_onnx_hiercode
+            from scripts import export_to_onnx
 
-            assert export_to_onnx_hiercode is not None
+            assert export_to_onnx is not None
         except ImportError:
             pytest.skip("export_to_onnx_hiercode not available")
 

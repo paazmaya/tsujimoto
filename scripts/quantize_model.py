@@ -236,9 +236,9 @@ Examples:
     parser.add_argument(
         "--model-type",
         type=str,
-        default="hiercode",
+        required=True,
         choices=["hiercode", "hiercode-higita", "cnn", "qat", "rnn", "radical-rnn", "vit"],
-        help="Model architecture type (default: hiercode)",
+        help="Model architecture type (required)",
     )
     # Note: Dataset auto-detected via get_dataset_directory() from optimization_config
     parser.add_argument(
@@ -282,20 +282,64 @@ Examples:
     # Load checkpoint to infer num_classes from classifier layer
     checkpoint = torch.load(model_path, map_location="cpu")
 
-    # Infer num_classes from checkpoint's classifier.weight shape
-    # The classifier layer has shape [num_classes, hidden_dim]
-    num_classes = None
+    # Debug: show all checkpoint keys
+    logger.info("→ Checkpoint contains %d keys", len(checkpoint))
     for key in checkpoint.keys():
-        if "classifier.weight" in key:
-            num_classes = checkpoint[key].shape[0]
-            break
+        if isinstance(checkpoint[key], torch.Tensor):
+            logger.info("  Key: '%s' → shape %s", key, checkpoint[key].shape)
+        else:
+            logger.info("  Key: '%s' → type %s", key, type(checkpoint[key]))
 
-    # Try alternate names for classifier layers
-    if num_classes is None:
-        for key in checkpoint.keys():
-            if "linear.weight" in key or "fc.weight" in key:
-                num_classes = checkpoint[key].shape[0]
-                break
+    # Extract model_state_dict if checkpoint is wrapped
+    if "model_state_dict" in checkpoint:
+        logger.info("→ Checkpoint is wrapped format, extracting model_state_dict...")
+        model_state_dict = checkpoint["model_state_dict"]
+    else:
+        model_state_dict = checkpoint
+
+    # Infer num_classes from the OUTPUT classifier weight (last one)
+    # Look for patterns: classifier.X.weight where X is the highest number
+    num_classes = None
+    classifier_weights = {}
+
+    for key in model_state_dict.keys():
+        if (
+            isinstance(model_state_dict[key], torch.Tensor)
+            and "classifier" in key
+            and "weight" in key
+        ):
+            # Extract layer number if present (e.g., "classifier.4" -> 4)
+            parts = key.split(".")
+            if len(parts) >= 2 and parts[1].isdigit():
+                layer_idx = int(parts[1])
+                classifier_weights[layer_idx] = (key, model_state_dict[key].shape[0])
+
+    # Use the highest indexed classifier layer (typically the output layer)
+    if classifier_weights:
+        max_layer = max(classifier_weights.keys())
+        key, num_classes = classifier_weights[max_layer]
+        logger.info(
+            "  → Found output classifier in '%s': shape %s → %d classes",
+            key,
+            model_state_dict[key].shape,
+            num_classes,
+        )
+    else:
+        # Fallback: look for any large weight matrix
+        for key in model_state_dict.keys():
+            if (
+                isinstance(model_state_dict[key], torch.Tensor)
+                and len(model_state_dict[key].shape) >= 2
+            ):
+                if model_state_dict[key].shape[0] > 1000:  # Likely num_classes
+                    num_classes = model_state_dict[key].shape[0]
+                    logger.info(
+                        "  → Inferred from large weight '%s': shape %s → %d classes",
+                        key,
+                        model_state_dict[key].shape,
+                        num_classes,
+                    )
+                    break
 
     if num_classes is None:
         # Fallback: try to load config
@@ -304,8 +348,10 @@ Examples:
             with open(config_path, encoding="utf-8") as f:
                 config_dict = json.load(f)
                 num_classes = config_dict.get("num_classes", 3036)
+                logger.info("  → Found in config.json: %d classes", num_classes)
         else:
             num_classes = 3036
+            logger.warning("  → Using default: %d classes", num_classes)
 
     logger.info("→ Detected %d classes from model checkpoint", num_classes)
 
@@ -352,13 +398,70 @@ Examples:
 
     # Load state dict with flexible key matching
     try:
-        model.load_state_dict(checkpoint)
-    except RuntimeError:
-        # Try loading with strict=False for compatibility
-        model.load_state_dict(checkpoint, strict=False)
-        logger.warning("⚠ Loaded model with strict=False (some keys may not match)")
-    else:
+        model.load_state_dict(model_state_dict)
         logger.info("✓ Model loaded successfully")
+    except RuntimeError:
+        # If there's a mismatch, try to detect the actual num_classes from state_dict
+        # This handles cases where checkpoint was trained with different dataset size
+        checkpoint_num_classes = None
+
+        for key in model_state_dict.keys():
+            if (
+                "classifier" in key
+                and "weight" in key
+                and isinstance(model_state_dict[key], torch.Tensor)
+            ):
+                # Get the first dimension (output size) of any classifier weight
+                checkpoint_num_classes = model_state_dict[key].shape[0]
+                logger.warning(
+                    "⚠ Detected num_classes mismatch: checkpoint has %d, model has %d",
+                    checkpoint_num_classes,
+                    num_classes,
+                )
+                break
+
+        if checkpoint_num_classes and checkpoint_num_classes != num_classes:
+            logger.info(
+                "→ Recreating model with checkpoint's num_classes=%d", checkpoint_num_classes
+            )
+            # Recreate model with correct num_classes
+            num_classes = checkpoint_num_classes
+
+            if args.model_type == "hiercode":
+                config = HierCodeConfig(num_classes=num_classes)
+                model = HierCodeClassifier(num_classes=num_classes, config=config)  # type: ignore
+            elif args.model_type == "hiercode-higita":
+                config = HierCodeConfig(num_classes=num_classes)
+                from hiercode_higita_enhancement import HierCodeWithHiGITA
+
+                model = HierCodeWithHiGITA(num_classes=num_classes)
+            elif args.model_type == "cnn":
+                config = CNNConfig(num_classes=num_classes)
+                model = LightweightKanjiNet(num_classes=num_classes)
+            elif args.model_type == "qat":
+                config = QATConfig(num_classes=num_classes)
+                model = QuantizableLightweightKanjiNet(num_classes=num_classes)
+            elif args.model_type == "rnn":
+                config = RNNConfig(num_classes=num_classes)
+                model = KanjiRNN(num_classes=num_classes)
+            elif args.model_type == "radical-rnn":
+                config = RadicalRNNConfig(num_classes=num_classes)
+                model = RadicalRNNClassifier(num_classes=num_classes, config=config)
+            elif args.model_type == "vit":
+                config = ViTConfig(num_classes=num_classes)
+                model = VisionTransformer(num_classes=num_classes, config=config)
+
+            # Try loading again with new model
+            try:
+                model.load_state_dict(model_state_dict)
+                logger.info("✓ Model loaded successfully with checkpoint's num_classes")
+            except RuntimeError:
+                model.load_state_dict(model_state_dict, strict=False)
+                logger.warning("⚠ Loaded model with strict=False (some keys may not match)")
+        else:
+            # Original error, try strict=False
+            model.load_state_dict(model_state_dict, strict=False)
+            logger.warning("⚠ Loaded model with strict=False (some keys may not match)")
 
     # Quantize
     if args.calibrate:
@@ -423,11 +526,86 @@ Examples:
 
     # Evaluate if requested
     if args.evaluate:
-        logger.warning("⚠ Evaluation skipped: model trained on %d classes", num_classes)
-        logger.warning("  but full combined_all_etl dataset has 43427 classes")
-        logger.info("  To train on the full dataset:")
-        logger.info("    uv run python scripts/prepare_dataset.py")
-        logger.info("    uv run python scripts/train_hiercode_higita.py --epochs 30")
+        logger.info("→ Loading dataset for evaluation...")
+        data_dir = str(get_dataset_directory())
+
+        try:
+            X, y = load_chunked_dataset(data_dir)
+
+            # Filter to only include classes the model was trained on
+            import numpy as np
+            from torch.utils.data import DataLoader, TensorDataset
+
+            valid_mask = y < num_classes
+            valid_indices = np.where(valid_mask)[0]
+
+            if len(valid_indices) < len(y):
+                logger.warning(
+                    "⚠ Filtered dataset from %d to %d samples (model trained on %d classes, dataset has %d)",
+                    len(y),
+                    len(valid_indices),
+                    num_classes,
+                    y.max() + 1,
+                )
+
+            X_filtered = X[valid_indices]
+            y_filtered = y[valid_indices]
+
+            # Split data: 90% train, 9% val, 1% test
+            n_samples = len(X_filtered)
+            n_train = int(0.9 * n_samples)
+            n_val = int(0.09 * n_samples)
+
+            indices = np.random.permutation(n_samples)
+            test_indices = indices[n_train + n_val :]
+
+            X_test = X_filtered[test_indices]
+            y_test = y_filtered[test_indices]
+
+            logger.info(
+                "  → Test set: %d samples, %d unique classes", len(y_test), len(np.unique(y_test))
+            )
+
+            # Convert to tensors
+            if X_test.ndim == 2 and X_test.shape[1] == 4096:
+                X_test = X_test.reshape(-1, 64, 64)
+            if X_test.ndim == 3:
+                X_test = X_test[:, np.newaxis, :, :]
+
+            X_test_tensor = torch.from_numpy(X_test).float()
+            y_test_tensor = torch.from_numpy(y_test).long()
+            test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+            test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+
+            # Evaluate
+            criterion = nn.CrossEntropyLoss()
+            accuracy, loss = evaluate_quantized_model(
+                quantized_model, test_loader, criterion, device=device
+            )
+
+            # Save evaluation results
+            results = {
+                "model_type": args.model_type,
+                "model_num_classes": num_classes,
+                "dataset_num_classes": int(y.max()) + 1,
+                "test_samples": int(len(y_test)),
+                "original_size_mb": orig_size / 1e6,
+                "quantized_size_mb": quant_size / 1e6 if quant_size else 0,
+                "size_reduction": (orig_size - quant_size) / orig_size if quant_size else 0,
+                "quantized_accuracy": accuracy,
+                "quantized_loss": loss,
+                "calibrated": args.calibrate,
+            }
+
+            results_path = model_path.parent / f"quantization_results_{args.model_type}.json"
+            with open(results_path, "w", encoding="utf-8") as f:
+                json.dump(results, f, indent=2)
+
+            logger.info("✓ Evaluation results saved to %s", results_path)
+
+        except Exception as e:
+            logger.error("✗ Evaluation failed: %s", str(e))
+            logger.info("  Check that model was trained on the same dataset you're evaluating on")
 
     logger.info("=" * 70)
     logger.info("✓ Quantization complete!")

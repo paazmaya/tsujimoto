@@ -82,16 +82,16 @@ class TestExportToONNXHierCode:
     def test_module_imports(self):
         """Test that HierCode ONNX export module can be imported."""
         try:
-            from scripts import export_to_onnx_hiercode
+            from scripts import export_to_onnx
 
-            assert export_to_onnx_hiercode is not None
+            assert export_to_onnx is not None
         except ImportError:
             pass
 
     def test_has_expected_functions(self):
         """Test that HierCode export has conversion functions."""
         try:
-            import scripts.export_to_onnx_hiercode as module
+            import scripts.export_to_onnx as module
 
             # Should have export/conversion related functions
             assert len(dir(module)) > 0

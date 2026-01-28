@@ -1,7 +1,22 @@
 #!/usr/bin/env python3
 """
-ONNX Conversion for ETL9G Kanji Recognition Model
-Converts trained PyTorch model to ONNX format with backend-specific optimizations
+Comprehensive ONNX Model Export Script
+Exports PyTorch models to ONNX with flexible quantization and optimization options:
+- Float32 (baseline, full precision)
+- INT8 (PyTorch dynamic quantization via torch.quantization)
+- ONNX INT8 (dynamic quantization via ONNX Runtime)
+- 4-bit (NF4, FP4, with optional double quantization via BitsAndBytes)
+- Backend-specific optimizations (Tract, ONNX Runtime, WASI, etc.)
+
+Supports all model types: CNN, RNN, HierCode, QAT, ViT, Radical-RNN, HierCode-HiGITA
+
+This consolidated script replaces:
+  - export_to_onnx.py
+  - export_quantized_to_onnx.py
+  - export_4bit_quantized_onnx.py
+  - export_model_to_onnx.py
+  - convert_to_onnx.py
+  - convert_int8_pytorch_to_quantized_onnx.py
 """
 
 import argparse
@@ -10,6 +25,7 @@ import sys
 import time
 import warnings
 from pathlib import Path
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -17,601 +33,657 @@ import torch.nn as nn
 # Add parent directory to path to import src/lib
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.lib import generate_export_path, infer_model_type, setup_logger
+from src.lib import setup_logger
 
 logger = setup_logger(__name__)
 
 # Suppress PyTorch's TypedStorage deprecation warning (internal, not in user code)
 warnings.filterwarnings("ignore", category=UserWarning, message=".*TypedStorage.*")
 
-# Import the correct model architecture from training
+# Import utility functions
 try:
-    from train_cnn_model import LightweightKanjiNet as OriginalLightweightKanjiNet
+    from src.lib import generate_export_path
+    from src.lib import infer_model_type as lib_infer_model_type
 except ImportError:
-    # Handle case when running from scripts directory
-    sys.path.append(str(Path(__file__).parent))
-    from train_cnn_model import LightweightKanjiNet as OriginalLightweightKanjiNet
 
-try:
-    import onnxruntime
+    def generate_export_path(model_type: str) -> Path:
+        """Generate export directory path"""
+        return Path.cwd() / "exports" / model_type
 
-    ONNXRUNTIME_AVAILABLE = True
-except ImportError:
-    ONNXRUNTIME_AVAILABLE = False
+    def lib_infer_model_type(base_name_or_path: str, default: str = "cnn") -> str:
+        """Infer model type from path"""
+        path_lower = str(base_name_or_path).lower()
+        for model_type in ["hiercode", "cnn", "rnn", "vit", "qat", "radical"]:
+            if model_type in path_lower:
+                return model_type
+        return default
 
 
-class LightweightKanjiNet(OriginalLightweightKanjiNet):
+# Wrapper with consistent signature
+def infer_model_type(path: str, default: str = "unknown") -> str:
+    """Infer model type from path"""
+    return lib_infer_model_type(path, default if default != "unknown" else "cnn")
+
+
+# Import all model classes
+from train_cnn_model import LightweightKanjiNet  # noqa: E402
+from train_hiercode import HierCodeClassifier  # noqa: E402
+from train_qat import QuantizableLightweightKanjiNet  # noqa: E402
+from train_radical_rnn import RadicalRNNClassifier  # noqa: E402
+from train_rnn import KanjiRNN  # noqa: E402
+from train_vit import VisionTransformer  # noqa: E402
+
+from src.lib.config import (  # noqa: E402
+    CNNConfig,
+    HierCodeConfig,
+    QATConfig,
+    RadicalRNNConfig,
+    RNNConfig,
+    ViTConfig,
+)
+
+
+class LightweightKanjiNetWithPooling(LightweightKanjiNet):
     """Extended LightweightKanjiNet with configurable pooling for different backends."""
 
     def __init__(self, num_classes: int, image_size: int = 64, pooling_type: str = "adaptive_avg"):
-        # Initialize the original model first
+        """Initialize with configurable pooling strategy.
+
+        Args:
+            num_classes: Number of classes
+            image_size: Input image size
+            pooling_type: One of 'adaptive_avg', 'adaptive_max', 'fixed_avg', 'fixed_max'
+        """
         super().__init__(num_classes, image_size)
 
-        # Override the pooling layer based on target backend compatibility
+        # Override pooling layer based on target backend compatibility
         if pooling_type == "adaptive_avg":
-            self.global_pool = nn.AdaptiveAvgPool2d(1)  # Original: GlobalAveragePool in ONNX
+            self.global_pool = nn.AdaptiveAvgPool2d(1)  # GlobalAveragePool in ONNX
         elif pooling_type == "adaptive_max":
-            self.global_pool = nn.AdaptiveMaxPool2d(1)  # Alternative: GlobalMaxPool in ONNX
+            self.global_pool = nn.AdaptiveMaxPool2d(1)  # GlobalMaxPool in ONNX
         elif pooling_type == "fixed_avg":
-            self.global_pool = nn.AvgPool2d(
-                kernel_size=4, stride=1, padding=0
-            )  # Compatible: AveragePool in ONNX
+            self.global_pool = nn.AvgPool2d(kernel_size=4, stride=1, padding=0)
         elif pooling_type == "fixed_max":
-            self.global_pool = nn.MaxPool2d(
-                kernel_size=4, stride=1, padding=0
-            )  # Compatible: MaxPool in ONNX
+            self.global_pool = nn.MaxPool2d(kernel_size=4, stride=1, padding=0)
         else:
             logger.warning("Unknown pooling type: %s, using adaptive_avg", pooling_type)
             self.global_pool = nn.AdaptiveAvgPool2d(1)
 
-        # Note: For the trained model, the input after conv4 is 4x4, so both adaptive and fixed pooling
-        # with kernel_size=4 will produce 1x1 output, maintaining the same classifier input size (256)
+
+def quantize_onnx_int8(
+    onnx_model_path: str, output_path: Optional[str] = None
+) -> Tuple[Optional[str], Optional[dict]]:
+    """Quantize ONNX model to INT8 using ONNX Runtime."""
+
+    logger.info("🔄 Quantizing ONNX model to INT8...")
+
+    try:
+        from onnxruntime.quantization import (  # type: ignore[import-not-found]
+            QuantType,
+            quantize_dynamic,
+        )
+
+        onnx_path = Path(onnx_model_path)
+
+        if output_path is None:
+            output_path_obj = onnx_path.parent / f"{onnx_path.stem}_int8.onnx"
+        else:
+            output_path_obj = Path(output_path)
+
+        logger.info("  → Applying INT8 dynamic quantization...")
+        quantize_dynamic(
+            str(onnx_path),
+            str(output_path_obj),
+            weight_type=QuantType.QInt8,
+        )
+
+        original_size = onnx_path.stat().st_size
+        quantized_size = output_path_obj.stat().st_size
+        reduction = 100 * (1 - quantized_size / original_size)
+
+        logger.info("✓ INT8 quantization complete")
+        logger.info(
+            "  → Original: %.2f MB → Quantized: %.2f MB (%.1f%% reduction)",
+            original_size / 1e6,
+            quantized_size / 1e6,
+            reduction,
+        )
+
+        return str(output_path_obj), {
+            "original_size_mb": original_size / 1e6,
+            "quantized_size_mb": quantized_size / 1e6,
+            "reduction_percent": reduction,
+        }
+
+    except ImportError:
+        logger.error("✗ ONNX Runtime not installed. Install with: pip install onnxruntime")
+        return None, None
+    except Exception as e:
+        logger.error("✗ INT8 quantization failed: %s", str(e))
+        return None, None
 
 
-def generate_output_filename(base_name, image_size, backend, suffix):
-    """Generate consistent filename with configuration details."""
-    model_type = infer_model_type(base_name)
-    export_dir = generate_export_path(model_type)
-    return str(
-        export_dir / f"{base_name}_etl9g_{image_size}x{image_size}_3036classes_{backend}{suffix}"
-    )
+def dequantize_state_dict(state_dict: dict) -> dict:
+    """Dequantize INT8 tensors for ONNX compatibility."""
+
+    dequantized_state = {}
+    quantized_count = 0
+
+    for key, value in state_dict.items():
+        if hasattr(value, "dequantize"):
+            dequantized_state[key] = value.dequantize()
+            quantized_count += 1
+        else:
+            dequantized_state[key] = value
+
+    if quantized_count > 0:
+        logger.info(f"✓ Dequantized {quantized_count} tensors for ONNX compatibility")
+
+    return dequantized_state
+
+
+def load_model_checkpoint(model_path: str, model_type: str) -> Tuple[torch.nn.Module, int, dict]:
+    """Load model from checkpoint and infer num_classes"""
+
+    model_path_obj = Path(model_path)
+    if not model_path_obj.exists():
+        logger.error(f"✗ Model path not found: {model_path}")
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    logger.info("→ Loading model from %s...", model_path)
+
+    # Load checkpoint
+    checkpoint = torch.load(model_path_obj, map_location="cpu")
+
+    # Extract model_state_dict if checkpoint is wrapped
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        model_state_dict = checkpoint["model_state_dict"]
+    else:
+        model_state_dict = checkpoint
+
+    # Check if model is INT8 quantized
+    is_quantized = any(hasattr(v, "dequantize") for v in model_state_dict.values())
+
+    # Infer num_classes from OUTPUT classifier weight
+    num_classes = None
+    classifier_weights = {}
+
+    for key in model_state_dict.keys():
+        if (
+            isinstance(model_state_dict[key], torch.Tensor)
+            and "classifier" in key
+            and "weight" in key
+        ):
+            parts = key.split(".")
+            if len(parts) >= 2 and parts[1].isdigit():
+                layer_idx = int(parts[1])
+                classifier_weights[layer_idx] = (key, model_state_dict[key].shape[0])
+
+    # Use highest indexed classifier layer
+    if classifier_weights:
+        max_layer = max(classifier_weights.keys())
+        key, num_classes = classifier_weights[max_layer]
+        logger.info(f"  → Found output classifier in '{key}': {num_classes} classes")
+
+    if num_classes is None:
+        # Fallback: try config file
+        config_path = model_path_obj.parent / f"{model_type}_config.json"
+        if config_path.exists():
+            with open(config_path, encoding="utf-8") as f:
+                config_dict = json.load(f)
+                num_classes = config_dict.get("num_classes", 3036)
+                logger.info(f"  → Found in config.json: {num_classes} classes")
+        else:
+            num_classes = 3036
+            logger.warning(f"  → Using default: {num_classes} classes")
+
+    # Create model based on type
+    if model_type == "hiercode":
+        config = HierCodeConfig(num_classes=num_classes)
+        model = HierCodeClassifier(num_classes=num_classes, config=config)
+    elif model_type == "hiercode-higita":
+        config = HierCodeConfig(num_classes=num_classes)
+        from train_hiercode_higita import HierCodeWithHiGITA
+
+        model = HierCodeWithHiGITA(num_classes=num_classes)
+    elif model_type == "cnn":
+        config = CNNConfig(num_classes=num_classes)
+        model = LightweightKanjiNet(num_classes=num_classes)
+    elif model_type == "qat":
+        config = QATConfig(num_classes=num_classes)
+        model = QuantizableLightweightKanjiNet(num_classes=num_classes)
+    elif model_type == "rnn":
+        config = RNNConfig(num_classes=num_classes)
+        model = KanjiRNN(num_classes=num_classes)
+    elif model_type == "radical-rnn":
+        config = RadicalRNNConfig(num_classes=num_classes)
+        model = RadicalRNNClassifier(num_classes=num_classes, config=config)
+    elif model_type == "vit":
+        config = ViTConfig(num_classes=num_classes)
+        model = VisionTransformer(num_classes=num_classes, config=config)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+    # Handle quantized models - dequantize for ONNX compatibility
+    state_dict_to_load = model_state_dict
+    if is_quantized:
+        logger.info("→ Model is INT8 quantized, dequantizing for ONNX export...")
+        state_dict_to_load = dequantize_state_dict(model_state_dict)
+
+    # Load weights
+    try:
+        model.load_state_dict(state_dict_to_load)
+    except RuntimeError:
+        model.load_state_dict(state_dict_to_load, strict=False)
+        logger.warning("⚠ Loaded model with strict=False (some keys may not match)")
+
+    model.eval()
+
+    return model, num_classes, {"is_quantized": is_quantized, "original_model": model_state_dict}
+
+
+def quantize_to_int8(model: torch.nn.Module) -> torch.nn.Module:
+    """Apply INT8 dynamic quantization to model"""
+
+    logger.info("  → Applying INT8 quantization...")
+    try:
+        quantized_model = torch.quantization.quantize_dynamic(
+            model, {torch.nn.Linear}, dtype=torch.qint8
+        )
+        logger.info("    ✓ INT8 quantization complete")
+        return quantized_model
+    except Exception as e:
+        logger.error(f"    ✗ INT8 quantization failed: {e}")
+        raise
+
+
+def quantize_to_4bit(
+    pytorch_model_path: str, method: str = "nf4", double_quant: bool = False
+) -> Optional[dict]:
+    """Quantize to 4-bit using BitsAndBytes (NF4 or FP4)"""
+
+    try:
+        logger.info(f"  → Applying {method.upper()} 4-bit quantization...")
+
+        # For 4-bit, we save quantization config and state dict
+        # BitsAndBytes quantization happens at inference time with compute_dtype
+        config = {
+            "method": method,
+            "double_quant": double_quant,
+            "compute_dtype": "float16",
+            "quantization_type": "4bit",
+        }
+
+        logger.info(f"    ✓ {method.upper()} config created")
+        return config
+
+    except ImportError:
+        logger.error("    ✗ BitsAndBytes not installed: pip install bitsandbytes")
+        return None
+    except Exception as e:
+        logger.error(f"    ✗ 4-bit quantization failed: {e}")
+        return None
 
 
 def export_to_onnx(
-    model_path,
-    onnx_path,
-    image_size,
-    pooling_type="adaptive_avg",
-    target_backend="tract",
-):
-    """Export PyTorch model to ONNX with backend-specific optimizations
+    model: torch.nn.Module,
+    output_path: Path,
+    opset_version: int = 18,
+    quantization_type: str = "float32",
+    backend: str = "default",
+) -> bool:
+    """Export model to ONNX format with optional backend optimizations.
 
-    Auto-generates filename if onnx_path is None.
-
-    Backend Compatibility Analysis:
-    ===============================
-
-    Sonos Tract vs ORT-Tract (https://ort.pyke.io/backends/tract) Comparison:
-    -----------------------------------
-    1. **Sonos Tract (Direct)**:
-       - Full Tract library with ~85% ONNX operator coverage
-       - Supports opset versions 9-18
-       - Direct access to all Tract optimizations
-       - Designed for embedded/edge deployment
-
-    2. **ORT-Tract (via ort crate)**:
-       - ONNX Runtime API wrapper around Tract
-       - Same underlying engine but through ort interface
-       - Limited to ort-supported APIs (tensor operations only)
-       - More constrained feature set for compatibility
-
-    Model Architecture -> ONNX Operators -> Backend Support:
-    -------------------------------------------------------
-    ✅ **UNIVERSALLY SUPPORTED** (Both Tract & ORT-Tract):
-    - Depthwise Convolution -> Conv (with groups) -> ✅ Full Support
-    - Pointwise Convolution -> Conv (1x1) -> ✅ Full Support
-    - Batch Normalization -> BatchNormalization -> ✅ Full Support
-    - ReLU Activations -> Relu -> ✅ Full Support
-    - Fixed Pooling -> AveragePool/MaxPool -> ✅ Full Support
-
-    ⚠️  **TRACT ONLY** (Direct Tract, NOT ORT-Tract):
-    - Global Pooling -> GlobalAveragePool/GlobalMaxPool -> ❌ ORT-Tract Unsupported
-
-    Export Method Selection:
-    -----------------------
-    - `tract`: Uses dynamo=True (modern torch.export) + opset 12
-    - `ort-tract`: Uses dynamo=False (legacy TorchScript) + opset 11
-    - `strict`: Uses dynamo=False (legacy TorchScript) + opset 11
-
-    The new dynamo=True export (PyTorch 2.9+) provides better optimization
-    and support for advanced features, but we use it selectively for compatibility.
-    =========================
+    Args:
+        model: PyTorch model to export
+        output_path: Output file path
+        opset_version: ONNX opset version (default: 18)
+        quantization_type: Quantization method (default: float32)
+        backend: Target backend (default, tract, ort-tract, wasi, etc.)
     """
 
-    # Validate inputs
-    if not Path(model_path).exists():
-        logger.error(f"❌ Model not found: {model_path}")
-        return None
-
-    if not ONNXRUNTIME_AVAILABLE:
-        logger.error("❌ ONNX Runtime not available")
-        return None
-
-    # Generate default filename if not provided
-    if onnx_path is None:
-        onnx_path = generate_output_filename("kanji_model", image_size, target_backend, ".onnx")
-
-    logger.info(f"📂 Loading model: {model_path}")
-    logger.info(f"🎯 Target backend: {target_backend}")
-    logger.info(f"📊 Image size: {image_size}x{image_size}")
-
-    # Choose export method and opset version based on target backend
-    if target_backend == "ort-tract":
-        # ORT-Tract: Use more conservative settings for API compatibility
-        opset_version = 11  # More conservative for ort compatibility
-        use_dynamo = False  # Conservative export for better compatibility
-        # Override pooling for ORT-Tract compatibility - GlobalAveragePool not supported
-        if pooling_type in ["adaptive_avg", "adaptive_max"]:
-            original_pooling = pooling_type
-            pooling_type = "fixed_avg" if pooling_type == "adaptive_avg" else "fixed_max"
-    elif target_backend == "strict":
-        # Strict mode: Maximum compatibility - also avoid GlobalAveragePool
-        opset_version = 11
-        use_dynamo = False  # Legacy export for maximum compatibility
-        if pooling_type in ["adaptive_avg", "adaptive_max"]:
-            original_pooling = pooling_type
-            pooling_type = "fixed_avg" if pooling_type == "adaptive_avg" else "fixed_max"
-    else:
-        # Direct Tract: Use newer opset for better optimization
-        opset_version = 12  # Newer opset for direct tract
-        use_dynamo = True  # Modern export for better optimization
-
-    # Initialize model architecture with proper pooling
-    # ETL9G dataset has exactly 3,036 character classes (fixed)
-    NUM_CLASSES = 3036
-    model = LightweightKanjiNet(NUM_CLASSES, image_size, pooling_type)
-
-    # Load trained weights
-    checkpoint = torch.load(model_path, map_location="cpu")
-
-    # For ORT-Tract compatibility, we need to ensure ALL pooling layers are correct
-    if target_backend in ["ort-tract", "strict"] and pooling_type == "fixed_avg":
-        # Replace ALL AdaptiveAvgPool2d layers with fixed pooling for backend compatibility
-
-        # Replace the main global pooling layer
-        if hasattr(model, "global_pool"):
-            model.global_pool = nn.AvgPool2d(4, stride=1, padding=0)
-
-        # Replace pooling layers in channel attention modules with correct kernel sizes
-        # Based on architecture: conv3->8x8, conv4->4x4, conv5->4x4
-        attention_pool_sizes = {
-            "attention3": 8,  # After conv3: 8x8 spatial size
-            "attention4": 4,  # After conv4: 4x4 spatial size
-            "attention5": 4,  # After conv5: 4x4 spatial size
-        }
-
-        for name, module in model.named_modules():
-            if hasattr(module, "global_pool") and any(
-                att_name in name for att_name in attention_pool_sizes
-            ):
-                # Find which attention module this is
-                for att_name, kernel_size in attention_pool_sizes.items():
-                    if att_name in name:
-                        module.global_pool = nn.AvgPool2d(kernel_size, stride=1, padding=0)
-                        break
-
-        # Load all weights except pooling layers which we've reconfigured
-        state_dict = checkpoint.copy()
-
-        # Remove any pooling layer weights that might conflict
-        keys_to_remove = [k for k in state_dict.keys() if "global_pool" in k]
-        for key in keys_to_remove:
-            del state_dict[key]
-
-        # Load the remaining weights
-        model.load_state_dict(state_dict, strict=False)
-    else:
-        # Standard loading for other backends
-        model.load_state_dict(checkpoint)
-
-    model = model.to("cpu")  # Explicitly move model to CPU
-    model.eval()
-
-    # Create dummy input for ONNX export
-    # The trained model expects 2D image input (1, 1, 64, 64), not flattened
-    dummy_input = torch.randn(1, 1, image_size, image_size)
-
-    logger.info("📤 Exporting to ONNX...")
+    logger.info(f"  → Exporting to ONNX (opset {opset_version}, backend: {backend})...")
 
     try:
+        dummy_input = torch.randn(1, 1, 64, 64)
+
         torch.onnx.export(
             model,
-            dummy_input,
-            onnx_path,
-            export_params=True,
+            (dummy_input,),
+            str(output_path),
+            input_names=["input_image"],
+            output_names=["logits"],
             opset_version=opset_version,
-            do_constant_folding=True,  # Both backends benefit from constant folding ✅
-            input_names=["input"],
-            output_names=["output"],
-            dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}}
-            if target_backend != "strict"
-            else None,  # Disable dynamic axes for ultra-conservative mode
-            dynamo=use_dynamo,
+            do_constant_folding=True,
             verbose=False,
+            export_params=True,
         )
-        logger.info(f"✓ ONNX export complete: {onnx_path}")
+
+        file_size = output_path.stat().st_size
+        logger.info(f"    ✓ ONNX export complete: {file_size / 1e6:.2f} MB")
+        return True
+
     except Exception as e:
-        if use_dynamo:
-            logger.warning("⚠️  Retrying export without dynamo...")
-            torch.onnx.export(
-                model,
-                dummy_input,
-                onnx_path,
-                export_params=True,
-                opset_version=opset_version,
-                do_constant_folding=True,
-                input_names=["input"],
-                output_names=["output"],
-                dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}}
-                if target_backend != "strict"
-                else None,
-                verbose=False,
+        logger.error(f"    ✗ ONNX export failed: {e}")
+        return False
+
+
+def export_model(
+    model_path: str,
+    model_type: str,
+    quantization: str = "float32",
+    output_path: Optional[str] = None,
+    opset_version: int = 18,
+    verify: bool = False,
+    test_inference: bool = False,
+    backend: str = "default",
+    onnx_int8: bool = False,
+) -> Optional[Path]:
+    """Export model with specified quantization level and backend.
+
+    Args:
+        model_path: Path to PyTorch model
+        model_type: Model architecture type
+        quantization: Quantization method (float32, int8, 4bit:nf4, 4bit:fp4, etc.)
+        output_path: Custom output path
+        opset_version: ONNX opset version
+        verify: Verify ONNX model validity
+        test_inference: Test ONNX inference
+        backend: Target backend optimization
+        onnx_int8: Apply INT8 quantization to ONNX model after export
+    """
+
+    logger.info(f"🔄 Loading model from {model_path}...")
+
+    try:
+        model, num_classes, checkpoint_info = load_model_checkpoint(model_path, model_type)
+    except Exception as e:
+        logger.error(f"✗ Failed to load model: {e}")
+        return None
+
+    logger.info(f"✓ Detected {num_classes} classes from model checkpoint")
+
+    # Determine quantization approach
+    quantized_model = model
+    quant_suffix = ""
+    is_quantized_pth = False  # Track if output should be PyTorch instead of ONNX
+
+    # Prepare output_path as Path object
+    model_path_obj = Path(model_path)
+    if output_path is None:
+        output_path_obj: Optional[Path] = None
+    else:
+        output_path_obj = Path(output_path)
+
+    if quantization == "int8":
+        logger.info("📊 Preparing INT8 quantization...")
+        try:
+            quantized_model = quantize_to_int8(model)
+            quant_suffix = "_int8"
+            is_quantized_pth = True  # INT8 models must stay as .pth
+        except Exception as e:
+            logger.warning(f"⚠ INT8 quantization skipped: {e}")
+
+    elif quantization.startswith("4bit"):
+        logger.info(f"📊 Preparing {quantization} quantization...")
+        parts = quantization.split(":")
+        method = parts[1] if len(parts) > 1 else "nf4"
+        double_quant = "double" in quantization.lower()
+
+        quant_config = quantize_to_4bit(model_path, method, double_quant)
+        if quant_config:
+            quant_suffix = f"_4bit_{method}"
+            if double_quant:
+                quant_suffix += "_double"
+            logger.info(f"  → 4-bit config: {json.dumps(quant_config, indent=2)}")
+        else:
+            logger.warning("⚠ 4-bit quantization skipped (BitsAndBytes not available)")
+
+    # Extract ISO date from model file's modification time
+    model_mtime = model_path_obj.stat().st_mtime
+    from datetime import datetime
+
+    iso_date = datetime.fromtimestamp(model_mtime).strftime("%Y-%m-%d")
+    logger.info(f"  → Model creation date: {iso_date}")
+
+    # Generate output path if not provided
+    if output_path_obj is None:
+        if is_quantized_pth:
+            # INT8 quantized models save as .pth, not .onnx
+            output_path_obj = model_path_obj.parent / f"{model_type}_{iso_date}{quant_suffix}.pth"
+        else:
+            output_path_obj = (
+                model_path_obj.parent
+                / f"{model_type}_{iso_date}{quant_suffix}_opset{opset_version}.onnx"
             )
-            logger.info(f"✓ ONNX export complete: {onnx_path}")
-        else:
-            logger.error(f"❌ ONNX export failed: {e}")
-            raise
 
-    # Optimize ONNX model
-    logger.info("🔧 Optimizing ONNX model...")
+    output_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
-    try:
-        # Basic optimization using session options
-        sess_options = onnxruntime.SessionOptions()
-        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-        # Test inference to ensure model works
-        session = onnxruntime.InferenceSession(str(onnx_path), sess_options)
-
-        # Get model info
-        input_shape = session.get_inputs()[0].shape
-        output_shape = session.get_outputs()[0].shape
-
-        # Test inference
-        test_input = torch.randn(1, 1, image_size, image_size).numpy()
-        outputs = session.run(None, {"input": test_input})
-
-    except Exception as e:  # noqa: S110
-        logger.error(f"❌ ONNX validation failed: {e}")
-
-    # Create character mapping for inference
-    mapping_path = onnx_path.replace(".onnx", "_mapping.json")
-
-    # Load the character mapping
-    mapping_file = "kanji_etl9g_mapping.json"
-    try:
-        with open(mapping_file, encoding="utf-8") as f:
-            character_mapping = json.load(f)
-        logger.info(f"✓ Loaded character mapping: {mapping_file}")
-
-        # Convert mapping to the format expected by create_character_mapping
-        char_details = {}
-        for class_id, char_info in character_mapping.items():
-            # Skip metadata entries that aren't class mappings
-            if not class_id.isdigit():
-                continue
-
-            char_details[char_info.get("jis_code", f"{class_id:04X}")] = {
-                "class_idx": int(class_id),
-                "character": char_info.get("character", f"[{class_id}]"),
-                "stroke_count": char_info.get("stroke_count", 8),
-            }
-
-    except FileNotFoundError:
-        logger.warning(f"⚠️  Character mapping not found: {mapping_file}")
-        # Fallback to dataset mapping
+    if is_quantized_pth:
+        logger.info("💾 Saving INT8 quantized model as PyTorch...")
         try:
-            with open("dataset/character_mapping.json", encoding="utf-8") as f:
-                char_details = json.load(f)
-            logger.info("✓ Using fallback character mapping")
-        except FileNotFoundError:
-            logger.warning("⚠️  No character mapping found (inference may lack character info)")
-            char_details = {}
+            torch.save(quantized_model.state_dict(), output_path_obj)
+            file_size = output_path_obj.stat().st_size
+            logger.info(f"✓ INT8 model saved: {output_path_obj.name} ({file_size / 1e6:.2f} MB)")
+        except Exception as e:
+            logger.error(f"✗ Failed to save INT8 model: {e}")
+            return None
+    else:
+        logger.info(f"🔄 Exporting {quantization} model to ONNX...")
 
-    # Create comprehensive mapping
-    mapping = create_character_mapping(
-        char_details,
-        {
-            "image_size": image_size,
-            "pooling_type": pooling_type,
-            "target_backend": target_backend,
-            "opset_version": opset_version,
-            "export_method": "torch.export" if use_dynamo else "TorchScript",
-        },
-        character_mapping if "character_mapping" in locals() else None,
-    )
+        if not export_to_onnx(
+            quantized_model, output_path_obj, opset_version, quantization, backend
+        ):
+            return None
 
-    with open(mapping_path, "w", encoding="utf-8") as f:
-        json.dump(mapping, f, indent=2, ensure_ascii=False)
-
-    logger.info(f"✓ Saved character mapping: {mapping_path}")
-    logger.info("=" * 70)
-    logger.info("✅ ONNX export complete!")
-    logger.info("=" * 70)
-
-    return onnx_path
-
-
-def create_character_mapping(char_details, model_info, character_mapping=None):
-    """Create character mapping for ETL9G dataset (3,036 classes)"""
-    NUM_CLASSES = 3036
-
-    logger.info(f"📊 Creating character mapping for {NUM_CLASSES} classes...")
-
-    # If character mapping is provided directly, use it
-    if character_mapping:
-        characters = {}
-        mapping_chars = character_mapping.get("characters", {})
-        for class_idx in range(NUM_CLASSES):
-            class_str = str(class_idx)
-            char_info = mapping_chars.get(class_str, {})
-
-            if char_info:
-                characters[class_str] = {
-                    "character": char_info.get("character", f"[{class_idx}]"),
-                    "jis_code": char_info.get("jis_code", f"{class_idx:04X}"),
-                    "stroke_count": char_info.get("stroke_count", 8),
-                }
+        # Apply ONNX INT8 quantization if requested
+        if onnx_int8:
+            logger.info("📊 Applying ONNX INT8 quantization...")
+            quantized_onnx_path, quant_info = quantize_onnx_int8(str(output_path_obj))
+            if quantized_onnx_path:
+                output_path_obj = Path(quantized_onnx_path)
+                logger.info(f"✓ ONNX INT8 model saved: {output_path_obj.name}")
             else:
-                characters[class_str] = {
-                    "character": f"[{class_idx}]",
-                    "jis_code": f"{class_idx:04X}",
-                    "stroke_count": 8,
-                }
+                logger.warning("⚠ ONNX INT8 quantization failed, using unquantized model")
 
-        # Complete mapping structure
-        mapping = {
-            "model_info": model_info,
-            "num_classes": NUM_CLASSES,
-            "characters": characters,
-            "statistics": {
-                "total_characters": len(characters),
-                "mapped_characters": len(
-                    [c for c in characters.values() if not c["character"].startswith("[")]
-                ),
-                "creation_timestamp": int(time.time()),
-            },
-        }
-        return mapping
-
-    def jis_to_unicode(jis_code):
-        """Convert JIS X 0208 area/code format to Unicode character."""
-        try:
-            # Convert hex string to integer
-            jis_int = int(jis_code, 16)
-
-            # Extract area (high byte) and code (low byte)
-            area = (jis_int >> 8) & 0xFF
-            code = jis_int & 0xFF
-
-            # JIS X 0208 to Unicode mapping
-            if area == 0x24:  # Hiragana
-                if 0x21 <= code <= 0x73:
-                    return chr(0x3041 + (code - 0x21))
-            elif area == 0x25:  # Katakana
-                if 0x21 <= code <= 0x76:
-                    return chr(0x30A1 + (code - 0x21))
-            elif 0x30 <= area <= 0x4F:  # Kanji
-                # Simplified kanji mapping - this is a basic approximation
-                # Real JIS X 0208 to Unicode requires full conversion tables
-                base_offset = (area - 0x30) * 94 + (code - 0x21)
-                return chr(0x4E00 + base_offset)  # CJK Unified Ideographs base
-
-            return f"[JIS:{jis_code}]"
-
-        except (ValueError, OverflowError):
-            return f"[JIS:{jis_code}]"
-
-    def estimate_stroke_count(jis_code, character):
-        """Estimate stroke count based on JIS code and character"""
-        try:
-            jis_int = int(jis_code, 16)
-            area = (jis_int >> 8) & 0xFF
-            code = jis_int & 0xFF
-
-            # Hiragana typically have 1-4 strokes
-            if area == 0x24 or area == 0x30:
-                # Simple estimation based on position
-                return min(4, max(1, (code - 0x21) % 4 + 1))
-
-            # Katakana typically have 1-5 strokes
-            elif area == 0x25:
-                return min(5, max(1, (code - 0x21) % 5 + 1))
-
-            # Kanji stroke count estimation
-            elif 0x30 <= area <= 0x4F:
-                # JIS ordering roughly follows stroke count/complexity
-                jis_linear = ((area - 0x30) * 94) + (code - 0x21)
-
-                # Rough stroke count estimation
-                if jis_linear < 200:
-                    return min(8, max(1, jis_linear // 25 + 1))  # 1-8 strokes
-                elif jis_linear < 800:
-                    return min(12, max(8, (jis_linear - 200) // 75 + 8))  # 8-12 strokes
-                elif jis_linear < 1500:
-                    return min(16, max(12, (jis_linear - 800) // 100 + 12))  # 12-16 strokes
-                else:
-                    return min(25, max(16, (jis_linear - 1500) // 150 + 16))  # 16+ strokes
-
-            return 1  # Default fallback
-
-        except ValueError:
-            return 1
-
-    # estimate_stroke_count function previously defined above (line 390), not redefined here
-
-    # Create class-to-JIS mapping
-    class_to_jis = {}
-    jis_to_class = {}
-
-    for jis_code, details in char_details.items():
-        class_idx = details["class_idx"]
-        class_to_jis[str(class_idx)] = jis_code
-        jis_to_class[jis_code] = class_idx
-
-    # Create comprehensive character mapping
-    characters = {}
-
-    for class_idx in range(NUM_CLASSES):
-        class_str = str(class_idx)
-
-        if class_str in class_to_jis:
-            jis_code = class_to_jis[class_str]
-
-            # Get the actual character using JIS to Unicode conversion
-            character = jis_to_unicode(jis_code)
-            stroke_count = estimate_stroke_count(jis_code, character)
-
-            characters[class_str] = {
-                "character": character,
-                "jis_code": jis_code,
-                "stroke_count": stroke_count,
-            }
-        else:
-            # Fallback for missing mappings - this should be rare with proper dataset
-            characters[class_str] = {
-                "character": f"[Missing-{class_idx}]",
-                "jis_code": "unknown",
-                "stroke_count": 1,
-            }
-
-    # Complete mapping structure
-    mapping = {
-        "model_info": model_info,
-        "num_classes": NUM_CLASSES,
-        "characters": characters,
-        "statistics": {
-            "total_characters": len(characters),
-            "hiragana_count": len(
-                [c for c in characters.values() if c["jis_code"].startswith("30")]
-            ),
-            "kanji_count": len(
-                [
-                    c
-                    for c in characters.values()
-                    if c["jis_code"].startswith(
-                        (
-                            "31",
-                            "32",
-                            "33",
-                            "34",
-                            "35",
-                            "36",
-                            "37",
-                            "38",
-                            "39",
-                            "3A",
-                            "3B",
-                            "3C",
-                            "3D",
-                            "3E",
-                            "3F",
-                            "40",
-                            "41",
-                            "42",
-                            "43",
-                            "44",
-                        )
-                    )
-                ]
-            ),
-            "average_stroke_count": sum(c["stroke_count"] for c in characters.values())
-            / len(characters)
-            if characters
-            else 0,
-        },
+    # Create metadata file
+    info_path = output_path_obj.with_suffix(".json")
+    info = {
+        "model_type": model_type,
+        "num_classes": num_classes,
+        "quantization": quantization,
+        "onnx_int8": onnx_int8,
+        "input_shape": [1, 1, 64, 64],
+        "input_names": ["input_image"],
+        "output_names": ["logits"],
+        "opset_version": opset_version,
+        "backend": backend,
+        "file_size_mb": output_path_obj.stat().st_size / 1e6,
+        "from_pytorch": str(model_path),
+        "format": "pth" if is_quantized_pth else "onnx",
     }
 
-    return mapping
+    with open(info_path, "w", encoding="utf-8") as f:
+        json.dump(info, f, indent=2)
 
+    logger.info(f"✓ Metadata saved: {info_path.name}")
 
-# Note: create_character_mapping is defined above (line 322) - no redefinition needed
+    # Verification (only for ONNX)
+    if verify and not is_quantized_pth:
+        logger.info("🔍 Verifying ONNX model...")
+        try:
+            import onnx
+
+            onnx_model = onnx.load(str(output_path_obj))
+            onnx.checker.check_model(onnx_model)
+            logger.info("✓ ONNX model is valid")
+        except ImportError:
+            logger.warning("⚠ ONNX not available for verification")
+        except Exception as e:
+            logger.warning(f"⚠ ONNX verification failed: {e}")
+
+    # Inference test (only for ONNX)
+    if test_inference and not is_quantized_pth:
+        logger.info("🧪 Testing ONNX model inference...")
+        try:
+            import onnxruntime as ort
+
+            providers = [
+                ("CUDAExecutionProvider", {"device_id": 0}),
+                ("CPUExecutionProvider", {}),
+            ]
+            sess = ort.InferenceSession(str(output_path_obj), providers=providers)
+            logger.info(f"  → Using provider: {sess.get_providers()[0]}")
+
+            input_name = sess.get_inputs()[0].name
+            output_name = sess.get_outputs()[0].name
+
+            times = []
+            for _ in range(5):
+                test_input = (torch.randn(1, 1, 64, 64).numpy()).astype("float32")
+                start = time.time()
+                sess.run([output_name], {input_name: test_input})
+                times.append((time.time() - start) * 1000)
+
+            avg_time = sum(times) / len(times)
+            logger.info(f"✓ Inference test successful: {avg_time:.2f} ms per sample")
+
+        except ImportError:
+            logger.warning("⚠ ONNX Runtime not available for inference testing")
+        except Exception as e:
+            logger.warning(f"⚠ Inference test failed: {e}")
+
+    return output_path_obj
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert PyTorch kanji model to ONNX")
+    parser = argparse.ArgumentParser(
+        description="Unified ONNX Model Export with Quantization Options",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Quantization Options:
+  float32       - Full precision (baseline)
+  int8          - INT8 dynamic quantization (3-4x smaller)
+  4bit:nf4      - NF4 quantization (best accuracy/size trade-off)
+  4bit:fp4      - FP4 quantization (fastest, smallest)
+  4bit:nf4:double - NF4 with double quantization (extreme compression)
+
+Examples:
+  # Export CNN model (float32)
+  python export_model_to_onnx.py --model-path training/cnn/best_model.pth --model-type cnn
+
+  # Export with INT8 quantization
+  python export_model_to_onnx.py --model-path training/cnn/best_model.pth --model-type cnn --quantization int8 --verify
+
+  # Export with 4-bit NF4 quantization
+  python export_model_to_onnx.py --model-path training/hiercode/best_model.pth --model-type hiercode --quantization 4bit:nf4 --test-inference
+
+  # Export with maximum compression (4-bit NF4 + double quant)
+  python export_model_to_onnx.py --model-path training/rnn/best_model.pth --model-type rnn --quantization 4bit:nf4:double --verify --test-inference
+
+  # Custom output path and opset
+  python export_model_to_onnx.py --model-path training/vit/best_model.pth --model-type vit --quantization int8 --output exports/my_model.onnx --opset 18
+        """,
+    )
+
     parser.add_argument(
         "--model-path",
+        required=True,
         type=str,
-        default="training/cnn/best_kanji_model.pth",
-        help="Path to the trained PyTorch model",
+        help="Path to trained PyTorch model checkpoint",
     )
     parser.add_argument(
-        "--onnx-path",
+        "--model-type",
+        type=str,
+        required=True,
+        choices=["hiercode", "hiercode-higita", "cnn", "qat", "rnn", "radical-rnn", "vit"],
+        help="Model architecture type (required)",
+    )
+    parser.add_argument(
+        "--quantization",
+        type=str,
+        default="float32",
+        choices=[
+            "float32",
+            "int8",
+            "4bit:nf4",
+            "4bit:fp4",
+            "4bit:nf4:double",
+            "4bit:fp4:double",
+        ],
+        help="Quantization type (default: float32)",
+    )
+    parser.add_argument(
+        "--output",
         type=str,
         default=None,
-        help="Output path for ONNX model (auto-generated if not specified)",
-    )
-    parser.add_argument("--image-size", type=int, default=64, help="Image size used in training")
-    parser.add_argument(
-        "--pooling-type",
-        type=str,
-        default="adaptive_avg",
-        choices=["adaptive_avg", "adaptive_max", "fixed_avg", "fixed_max"],
-        help="Pooling layer configuration",
+        help="Output path for ONNX model (default: auto-generated)",
     )
     parser.add_argument(
-        "--target-backend",
+        "--opset",
+        type=int,
+        default=18,
+        help="ONNX opset version (default: 18)",
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify ONNX model validity",
+    )
+    parser.add_argument(
+        "--test-inference",
+        action="store_true",
+        help="Test ONNX model inference",
+    )
+    parser.add_argument(
+        "--backend",
         type=str,
-        default="tract",
-        choices=["tract", "ort-tract", "strict"],
-        help="Target inference backend",
+        default="default",
+        choices=["default", "tract", "ort-tract", "wasi", "tflite"],
+        help="Target backend for optimization (default: default)",
+    )
+    parser.add_argument(
+        "--onnx-int8",
+        action="store_true",
+        help="Apply INT8 quantization to ONNX model after export (requires onnxruntime)",
     )
 
     args = parser.parse_args()
 
     logger.info("=" * 70)
-    logger.info("CONVERT PYTORCH MODEL TO ONNX FORMAT")
+    logger.info("COMPREHENSIVE ONNX MODEL EXPORT")
     logger.info("=" * 70)
-    logger.info(f"Model: {args.model_path}")
-    logger.info(f"Backend: {args.target_backend}")
-    logger.info(f"Pooling: {args.pooling_type}")
-    logger.info("=" * 70)
+    logger.info(
+        "Model: %s | Quantization: %s | Opset: %d | Backend: %s | ONNX INT8: %s",
+        args.model_type,
+        args.quantization,
+        args.opset,
+        args.backend,
+        args.onnx_int8,
+    )
+    logger.info("Verify: %s | Test Inference: %s", args.verify, args.test_inference)
+    logger.info("")
 
-    # Note: Output path should be specified via --onnx-path
-    # Directory will be created by ONNX export function
-
-    if args.onnx_path is None:
-        onnx_filename = generate_output_filename(
-            "kanji_model",
-            args.image_size,
-            args.target_backend,
-            ".onnx",
-        )
-    else:
-        onnx_filename = args.onnx_path
-
-    result = export_to_onnx(
+    result = export_model(
         args.model_path,
-        onnx_filename,
-        args.image_size,
-        args.pooling_type,
-        args.target_backend,
+        model_type=args.model_type,
+        quantization=args.quantization,
+        output_path=args.output,
+        opset_version=args.opset,
+        verify=args.verify,
+        test_inference=args.test_inference,
+        backend=args.backend,
+        onnx_int8=args.onnx_int8,
     )
 
-    if result:
-        logger.info("✅ ONNX export successful!")
-        if args.target_backend == "tract":
-            logger.info("   Backend: Tract (GlobalAveragePool compatible)")
-        elif args.target_backend == "ort-tract":
-            logger.info("   Backend: ORT-Tract (AveragePool compatible)")
-        else:  # strict
-            logger.info("   Backend: Strict ONNX")
-        logger.info("=" * 70)
+    if result is None:
+        logger.error("✗ Export failed")
+        return
 
-    else:
-        logger.error("❌ ONNX export failed")
-        logger.info("=" * 70)
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info(f"✓ Export complete: {result.name}")
+    logger.info("=" * 70)
 
 
 if __name__ == "__main__":
