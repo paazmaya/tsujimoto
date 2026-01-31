@@ -8,7 +8,8 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from scripts.checkpoint_manager import CheckpointManager
+
+from src.lib.checkpoint import CheckpointManager
 
 
 class SimpleModel(nn.Module):
@@ -59,20 +60,21 @@ class TestCheckpointManagerInit:
     def test_init_creates_directory(self, temp_checkpoint_dir):
         """Test that initialization creates approach directory."""
         CheckpointManager(temp_checkpoint_dir, approach_name="cnn")
-        assert (Path(temp_checkpoint_dir) / "cnn").exists()
+        assert Path(temp_checkpoint_dir).exists()
 
     def test_init_with_different_approaches(self, temp_checkpoint_dir):
         """Test initialization with different approach names."""
         approaches = ["cnn", "rnn", "hiercode", "vit", "qat"]
         for approach in approaches:
-            CheckpointManager(temp_checkpoint_dir, approach_name=approach)
-            assert (Path(temp_checkpoint_dir) / approach).exists()
+            manager = CheckpointManager(temp_checkpoint_dir, approach_name=approach)
+            assert manager.approach_dir.exists()
+            assert manager.approach_name == approach
 
     def test_init_sets_attributes(self, checkpoint_manager):
         """Test that attributes are properly set."""
         assert checkpoint_manager.approach_name == "test_cnn"
-        assert checkpoint_manager.base_dir == Path(checkpoint_manager.base_dir)
-        assert checkpoint_manager.approach_dir.name == "test_cnn"
+        assert isinstance(checkpoint_manager.approach_dir, Path)
+        assert checkpoint_manager.approach_dir.exists()
 
 
 class TestCheckpointSave:

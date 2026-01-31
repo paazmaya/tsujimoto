@@ -4,7 +4,8 @@
 from dataclasses import fields
 
 import pytest
-from scripts.optimization_config import OptimizationConfig
+
+from src.lib.config import OptimizationConfig
 
 
 class TestOptimizationConfigDefaults:

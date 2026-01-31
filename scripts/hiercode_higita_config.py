@@ -85,8 +85,8 @@ class HiGITATrainingConfig:
     use_higita_enhancement: bool = True
     """Enable Hi-GITA enhancement (set to False for standard HierCode)"""
 
-    num_classes: int = 3036
-    """Number of character classes (ETL9G dataset)"""
+    num_classes: int = 43427
+    """Number of character classes (combined ETL6-9 dataset)"""
 
     image_encoder: HiGITAImageEncoderConfig = field(default_factory=HiGITAImageEncoderConfig)
     """Image encoder configuration"""

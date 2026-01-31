@@ -16,6 +16,11 @@ jobs:
     - name: TruffleHog OSS
       uses: trufflesecurity/trufflehog@v3.91.1 # Must be full version string
     
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+  
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
@@ -32,3 +37,10 @@ jobs:
 
     - name: Run ruff format check
       run: uv tool run ruff format --check .
+
+    - name: Run tests with coverage
+      run: uv run python -m pytest --cov=src/lib --cov-report=term --cov-report=xml
+      artifacts:
+        name: coverage-report
+        paths:
+          - coverage.xml
