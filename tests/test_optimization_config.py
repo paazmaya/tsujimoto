@@ -4,7 +4,6 @@
 from dataclasses import fields
 
 import pytest
-
 from scripts.optimization_config import OptimizationConfig
 
 
@@ -16,7 +15,7 @@ class TestOptimizationConfigDefaults:
         config = OptimizationConfig()
         assert config.data_dir == "dataset"
         assert config.image_size == 64
-        assert config.num_classes == 3036
+        assert config.num_classes == 43427
 
     def test_default_training_parameters(self):
         """Test default training hyperparameters."""

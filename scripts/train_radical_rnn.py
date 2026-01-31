@@ -96,7 +96,8 @@ class RadicalExtractor:
         # For each character, randomly assign 2-4 radicals
         # (simplified; real databases have linguistically accurate mappings)
         self.char_to_radicals = {}
-        for char_id in range(3036):
+        # Note: This uses a fixed range for demo purposes; should be based on actual dataset
+        for char_id in range(3036):  # ETL9G specific
             num_radicals = np.random.randint(2, 5)
             radicals = np.random.choice(self.vocab_size, num_radicals, replace=False)
             self.char_to_radicals[char_id] = list(radicals)

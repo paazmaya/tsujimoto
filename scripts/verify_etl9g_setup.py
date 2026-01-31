@@ -72,14 +72,14 @@ def analyze_etl9g_data(data_dir):
             logger.error("✗ No dataset files found")
             return
 
-        X_sample = data["X"][:10]  # First 10 samples
+        x_sample = data["X"][:10]  # First 10 samples  # noqa: N806
         y_sample = data["y"][:10]
-        logger.info("✓ Loaded %d samples for analysis", len(X_sample))
+        logger.info("✓ Loaded %d samples for analysis", len(x_sample))
 
         # Show a sample image
-        if len(X_sample) > 0:
-            img_size = int(np.sqrt(X_sample.shape[1]))
-            sample_img = X_sample[0].reshape(img_size, img_size)
+        if len(x_sample) > 0:
+            img_size = int(np.sqrt(x_sample.shape[1]))
+            sample_img = x_sample[0].reshape(img_size, img_size)
 
             plt.figure(figsize=(6, 3))
             plt.subplot(1, 2, 1)

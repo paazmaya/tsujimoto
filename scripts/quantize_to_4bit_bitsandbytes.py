@@ -182,7 +182,8 @@ def load_model_for_quantization(
         model = model.to(device)
         model.eval()
         return model, num_classes
-    except Exception:
+    except (FileNotFoundError, RuntimeError, ValueError) as e:
+        logger.error(f"Error loading model: {e}")
         return None, None
 
 

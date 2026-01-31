@@ -191,7 +191,7 @@ def load_model_checkpoint(
 
     # Infer num_classes from state dict, fallback to config file
     num_classes = infer_num_classes_from_state_dict(model_state_dict)
-    if num_classes == 3036:  # If using default
+    if num_classes == 43427:  # If using default
         num_classes = load_num_classes_from_config(model_path, model_type)
 
     # Import model architectures
@@ -434,7 +434,7 @@ def save_model_with_metadata(
         Tuple of (saved_path, file_size_bytes)
 
     Example:
-        >>> info = {"model_type": "cnn", "num_classes": 3036}
+        >>> info = {"model_type": "cnn", "num_classes": 43427}
         >>> saved_path, size = save_model_with_metadata(model, "model.pth", info)
     """
     output_path_obj = Path(output_path)
@@ -450,7 +450,7 @@ def save_model_with_metadata(
     # Save metadata
     full_metadata = {
         "model_type": model_info.get("model_type", "unknown"),
-        "num_classes": model_info.get("num_classes", 3036),
+        "num_classes": model_info.get("num_classes", 43427),
         "size_mb": file_size / 1e6,
         "size_bytes": file_size,
     }

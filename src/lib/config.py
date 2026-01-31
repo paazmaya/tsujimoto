@@ -12,6 +12,15 @@ from typing import Dict, Tuple
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+# Default configuration constants
+DEFAULT_DATA_DIR = "dataset"
+DEFAULT_IMAGE_SIZE = 64
+DEFAULT_NUM_CLASSES = 43427  # Combined all ETL dataset
+DEFAULT_BATCH_SIZE = 64
+DEFAULT_LEARNING_RATE = 0.001
+DEFAULT_EPOCHS = 30
+DEFAULT_RANDOM_SEED = 42
+
 
 @dataclass
 class OptimizationConfig:
@@ -21,14 +30,16 @@ class OptimizationConfig:
     """
 
     # ========== DATASET PARAMETERS ==========
-    data_dir: str = "dataset"
-    image_size: int = 64  # Input: 64x64 pixels
-    num_classes: int = 43528  # Kanji classes (combined_all_etl dataset)
+    data_dir: str = DEFAULT_DATA_DIR
+    image_size: int = DEFAULT_IMAGE_SIZE
+    num_classes: int = (
+        DEFAULT_NUM_CLASSES  # Kanji classes (combined_all_etl dataset - from metadata.json)
+    )
 
     # ========== TRAINING HYPERPARAMETERS ==========
-    epochs: int = 30  # Complete passes through dataset
-    batch_size: int = 64  # Samples per batch
-    learning_rate: float = 0.001  # Initial learning rate
+    epochs: int = DEFAULT_EPOCHS  # Complete passes through dataset
+    batch_size: int = DEFAULT_BATCH_SIZE  # Samples per batch
+    learning_rate: float = DEFAULT_LEARNING_RATE  # Initial learning rate
     weight_decay: float = 1e-5  # L2 regularization coefficient
 
     # ========== TRAIN/VAL/TEST SPLIT ==========

@@ -250,7 +250,7 @@ class TestETLDatasetProcessor:
         info = processor.DATASET_INFO["etl9g"]
         assert "name" in info
         assert "classes" in info
-        assert info["classes"] == 3036
+        assert info["classes"] == 3036  # ETL9G has 3036 classes
 
     def test_processor_creates_output_dir(self, temp_output_dir):
         """Test that processor creates output directory."""

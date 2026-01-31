@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """
 Example: Using SafeTensors Kanji Model for Inference
-Demonstrates how to load and use the SafeTensors model for kanji recognition
+
+Demonstrates how to load and use the SafeTensors model for kanji recognition.
+Shows loading a saved model, preprocessing input images, and performing inference.
+
+Usage:
+    python scripts/example_safetensors_usage.py
+
+Requirements:
+    - SafeTensors model file (*.safetensors)
+    - Model metadata JSON file
+    - Input image for inference
 """
 
 import json

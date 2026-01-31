@@ -80,7 +80,8 @@ class ETL1Handler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "M-type",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL1 record: {e}")
             return None
 
 
@@ -112,7 +113,8 @@ class ETL2Handler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "K-type",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL2 record: {e}")
             return None
 
 
@@ -144,7 +146,8 @@ class ETL3Handler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "C-type",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL3 record: {e}")
             return None
 
 
@@ -176,7 +179,8 @@ class ETL4Handler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "M-type",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL4 record: {e}")
             return None
 
 
@@ -208,7 +212,8 @@ class ETL5Handler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "M-type",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL5 record: {e}")
             return None
 
 
@@ -240,7 +245,8 @@ class ETL6Handler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "M-type",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL6 record: {e}")
             return None
 
 
@@ -272,7 +278,8 @@ class ETL7Handler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "M-type",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL7 record: {e}")
             return None
 
 
@@ -304,7 +311,8 @@ class ETL8GHandler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "ETL8G",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL8G record: {e}")
             return None
 
 
@@ -336,7 +344,8 @@ class ETL9GHandler(ETLFormatHandler):
                 "image_data": image_data,
                 "format_type": "ETL9G",
             }
-        except Exception:
+        except (struct.error, UnicodeDecodeError, IndexError) as e:
+            logger.warning(f"Failed to extract ETL9G record: {e}")
             return None
 
 
@@ -429,7 +438,8 @@ class ETLDatasetProcessor:
             image = np.array(pixels, dtype=np.uint8).reshape(height, width)
             return image * 17
 
-        except Exception:
+        except (ValueError, IndexError) as e:
+            logger.warning(f"Failed to unpack 4-bit image: {e}")
             return None
 
     def unpack_6bit_image(
@@ -459,7 +469,8 @@ class ETLDatasetProcessor:
             image = np.array(pixels, dtype=np.uint8).reshape(height, width)
             return image * 4
 
-        except Exception:
+        except (ValueError, IndexError) as e:
+            logger.warning(f"Failed to unpack 6-bit image: {e}")
             return None
 
     def preprocess_image(
@@ -568,8 +579,9 @@ class ETLDatasetProcessor:
 
                 all_samples.extend(samples)
                 all_local_mappings.append(local_jis_to_class)
-            except Exception:  # noqa: S110
-                pass
+            except (OSError, struct.error) as e:
+                logger.warning(f"Failed to process file {etl_file_path.name}: {e}")
+                continue
 
         if not all_samples:
             raise ValueError(f"No samples processed from {dataset_name}")

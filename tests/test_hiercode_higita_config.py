@@ -155,7 +155,7 @@ class TestHiGITATrainingConfigDefaults:
     def test_default_num_classes(self):
         """Test default number of classes."""
         config = HiGITATrainingConfig()
-        assert config.num_classes == 3036
+        assert config.num_classes == 43427
 
     def test_default_use_higita(self):
         """Test that Hi-GITA enhancement is enabled by default."""
@@ -322,7 +322,7 @@ class TestConfigConversions:
         assert "use_higita" in config_dict
         assert config_dict["use_higita"] is True
         assert "num_classes" in config_dict
-        assert config_dict["num_classes"] == 3036
+        assert config_dict["num_classes"] == 43427
 
     def test_to_dict_includes_encoders(self):
         """Test that to_dict includes encoder configurations."""

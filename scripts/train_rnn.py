@@ -63,7 +63,7 @@ class KanjiRNN(nn.Module):
         input_size: int = 4,
         hidden_size: int = 256,
         num_layers: int = 2,
-        num_classes: int = 3036,
+        num_classes: int = 43427,
         rnn_type: str = "LSTM",
         dropout: float = 0.3,
         bidirectional: bool = True,
@@ -132,7 +132,7 @@ class StrokeBasedRNN(nn.Module):
         stroke_features: int = 8,
         hidden_size: int = 256,
         num_layers: int = 2,
-        num_classes: int = 3036,
+        num_classes: int = 43427,
         max_strokes: int = 30,
         dropout: float = 0.3,
     ):
@@ -204,7 +204,7 @@ class RadicalRNN(nn.Module):
         radical_embed_dim: int = 128,
         hidden_size: int = 256,
         num_layers: int = 2,
-        num_classes: int = 3036,
+        num_classes: int = 43427,
         max_radicals: int = 10,
         dropout: float = 0.3,
     ):
@@ -280,7 +280,7 @@ class HybridCNNRNN(nn.Module):
         cnn_features: int = 512,
         hidden_size: int = 256,
         num_layers: int = 2,
-        num_classes: int = 3036,
+        num_classes: int = 43427,
         dropout: float = 0.3,
     ):
         super().__init__()
