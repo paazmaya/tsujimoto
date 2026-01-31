@@ -262,10 +262,10 @@ CharacterEncoder
 └─ Output: (B, 1, 512) [~200K params]
     ↓
 Classification Head
-├─ Linear(512, 3036)
-└─ Output: (B, 3036) logits [~1.5M params]
+├─ Linear(512, num_classes)  # 3036 (ETL9G) or 43427 (combined dataset)
+└─ Output: (B, num_classes) logits
 
-**Total Parameters**: ~2.1M
+**Total Parameters**: Varies by num_classes (~2.1M for ETL9G, ~22M for combined)
 ```
 
 ### Text Encoding Path
@@ -445,8 +445,8 @@ Train standard HierCode without Hi-GITA enhancement for comparison.
 import torch
 from scripts.hiercode_higita_enhancement import HierCodeWithHiGITA
 
-# Load Hi-GITA model
-model = HierCodeWithHiGITA(num_classes=3036, use_higita_enhancement=True)
+# Load Hi-GITA model (num_classes: 3036 for ETL9G, 43427 for combined dataset)
+model = HierCodeWithHiGITA(num_classes=43427, use_higita_enhancement=True)
 model.load_state_dict(torch.load('training/higita/checkpoints/best_hiercode_higita.pth'))
 model.eval()
 
@@ -731,8 +731,8 @@ import numpy as np
 from PIL import Image
 from scripts.hiercode_higita_enhancement import HierCodeWithHiGITA
 
-# Load model
-model = HierCodeWithHiGITA(num_classes=3036, use_higita_enhancement=True)
+# Load model (use 43427 for combined dataset, 3036 for ETL9G only)
+model = HierCodeWithHiGITA(num_classes=43427, use_higita_enhancement=True)
 checkpoint = torch.load('training/higita/checkpoints/best_hiercode_higita.pth')
 model.load_state_dict(checkpoint)
 model.eval()
@@ -774,8 +774,8 @@ for i, (pred, conf) in enumerate(zip(predictions, confidences)):
 import torch
 from scripts.hiercode_higita_enhancement import HierCodeWithHiGITA
 
-# Load model
-model = HierCodeWithHiGITA(num_classes=3036, use_higita_enhancement=True)
+# Load model (use 43427 for combined dataset, 3036 for ETL9G only)
+model = HierCodeWithHiGITA(num_classes=43427, use_higita_enhancement=True)
 model.load_state_dict(torch.load('training/higita/checkpoints/best_hiercode_higita.pth'))
 model.eval()
 
@@ -1294,7 +1294,8 @@ docker run -p 8000:8000 higita-server
 **A**: Retrain classifier head:
 
 ```python
-model = HierCodeWithHiGITA(num_classes=3036, use_higita_enhancement=True)
+# Use appropriate num_classes: 43427 (combined), 3036 (ETL9G), or custom value
+model = HierCodeWithHiGITA(num_classes=43427, use_higita_enhancement=True)
 
 # Load pre-trained encoders
 pretrained = torch.load('best_hiercode_higita.pth')

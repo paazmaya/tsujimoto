@@ -138,18 +138,18 @@ class TestETL9GSetup:
     """Tests for ETL9G dataset setup verification."""
 
     def test_module_imports(self):
-        """Test that test_etl9g_setup module can be imported."""
+        """Test that verify_etl9g_setup module can be imported."""
         try:
-            from scripts import test_etl9g_setup
+            from scripts import verify_etl9g_setup
 
-            assert test_etl9g_setup is not None
+            assert verify_etl9g_setup is not None
         except ImportError:
             pass
 
     def test_has_analysis_function(self):
         """Test that setup module has analysis function."""
         try:
-            from scripts.test_etl9g_setup import analyze_etl9g_data
+            from scripts.verify_etl9g_setup import analyze_etl9g_data
 
             assert analyze_etl9g_data is not None
         except (ImportError, AttributeError):
@@ -158,7 +158,7 @@ class TestETL9GSetup:
     def test_analysis_handles_missing_directory(self):
         """Test that analysis handles missing data directories gracefully."""
         try:
-            from scripts.test_etl9g_setup import analyze_etl9g_data
+            from scripts.verify_etl9g_setup import analyze_etl9g_data
 
             # Should not raise exception
             result = analyze_etl9g_data("/nonexistent/data/directory")
@@ -170,7 +170,7 @@ class TestETL9GSetup:
     def test_has_chunk_verification(self):
         """Test that setup module has chunk verification."""
         try:
-            from scripts.test_etl9g_setup import verify_dataset_chunks
+            from scripts.verify_etl9g_setup import verify_dataset_chunks
 
             assert verify_dataset_chunks is not None
         except (ImportError, AttributeError):
@@ -190,7 +190,7 @@ class TestAllConversionScriptsLoadable:
             "export_quantized_to_onnx",
             "export_to_onnx_hiercode",
             "inspect_onnx_model",
-            "test_etl9g_setup",
+            "verify_etl9g_setup",
         ]
 
         loaded_count = 0
@@ -225,9 +225,9 @@ class TestConversionScriptsHaveFunctions:
             pass
 
     def test_test_etl9g_has_public_api(self):
-        """Test that test_etl9g_setup has public functions."""
+        """Test that verify_etl9g_setup has public functions."""
         try:
-            import scripts.test_etl9g_setup as module
+            import scripts.verify_etl9g_setup as module
 
             # Should have at least one analysis function
             functions = [

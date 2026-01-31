@@ -104,7 +104,7 @@ IMAGE_ARGS = {
     "num_classes": ArgumentDefinition(
         name="num_classes",
         arg_type=int,
-        default=43528,
+        default=43427,
         help_text="Number of character classes",
     ),
 }

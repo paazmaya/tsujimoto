@@ -21,7 +21,7 @@ This document compares the RNN-based kanji recognition approaches with the exist
 
 **Model Parameters:**
 ```
-Typical: 2-5M parameters for 3036 classes
+Typical: 2-5M for ETL9G (3036 classes), 12-25M for combined dataset (43427 classes)
 ```
 
 **Strengths:**

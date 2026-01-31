@@ -372,8 +372,8 @@ class LightweightKanjiNet(nn.Module):
 ### Output
 
 - **Format**: Logits (pre-softmax scores)
-- **Shape**: (batch_size, 3036)
-- **Classes**: 3,036 possible kanji/hiragana characters
+- **Shape**: (batch_size, 43427) for combined dataset OR (batch_size, 3036) for ETL9G-only
+- **Classes**: 43,427 total classes (combined ETL6-9) or 3,036 (ETL9G only)
 - **Mapping**: Available in accompanying JSON files
 
 ## Usage Examples
@@ -389,9 +389,9 @@ model_weights = load_file("kanji_model_etl9g_64x64_3036classes.safetensors")
 model.load_state_dict(model_weights)
 model.eval()
 
-# Inference
+# Inference (output shape depends on dataset: 3036 for ETL9G, 43427 for combined)
 with torch.no_grad():
-    output = model(input_tensor)  # shape: (batch, 3036)
+    output = model(input_tensor)  # shape: (batch, num_classes)
     predicted_class = torch.argmax(output, dim=1)
 ```
 

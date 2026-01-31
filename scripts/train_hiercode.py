@@ -487,7 +487,7 @@ def train_hiercode(args):
     config = HierCodeConfig(
         data_dir=data_dir,
         image_size=getattr(args, "image_size", 64),
-        num_classes=getattr(args, "num_classes", 43528),
+        num_classes=getattr(args, "num_classes", 43427),
         epochs=getattr(args, "epochs", 30),
         batch_size=getattr(args, "batch_size", 64),
         learning_rate=getattr(args, "learning_rate", 0.001),

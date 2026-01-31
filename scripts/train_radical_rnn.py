@@ -433,7 +433,7 @@ def train_radical_rnn(args):
     # Get parameters with safe defaults
     sample_limit = getattr(args, "sample_limit", None)
     image_size = getattr(args, "image_size", 64)
-    num_classes = getattr(args, "num_classes", 43528)
+    num_classes = getattr(args, "num_classes", 43427)
     radical_vocab_size = getattr(args, "radical_vocab_size", 2000)
     radical_embedding_dim = getattr(args, "radical_embedding_dim", 128)
     radical_encoding_type = getattr(args, "radical_encoding_type", "binary_tree")

@@ -452,7 +452,7 @@ def train_vit(args):
     # Get parameters with safe defaults
     sample_limit = getattr(args, "sample_limit", None)
     image_size = getattr(args, "image_size", 64)
-    num_classes = getattr(args, "num_classes", 43528)
+    num_classes = getattr(args, "num_classes", 43427)
     patch_size = getattr(args, "patch_size", 8)
     embedding_dim = getattr(args, "embedding_dim", 64)
     num_heads = getattr(args, "num_heads", 2)
