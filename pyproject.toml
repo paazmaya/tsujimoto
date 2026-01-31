@@ -23,7 +23,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     # Core ML framework with CUDA support
-    "torch>=2.9.1",
+    "torch>=2.10.0",
     "torchvision>=0.24.1",
     # Data processing and utilities
     "numpy>=2.3.3",
@@ -31,7 +31,7 @@ dependencies = [
     "matplotlib>=3.10.7",
     "tqdm>=4.67.1",
     "opencv-python>=4.11.0",
-    "Pillow>=11.3.0",
+    "Pillow>=12.1.0",
     # Model export and deployment (GPU-accelerated)
     "onnx>=1.20.1",
     "onnxruntime-gpu>=1.23.2",
@@ -48,14 +48,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "ruff>=0.14.5",
-    "pytest>=8.4.2",
+    "pytest>=9.0.2",
     "pytest-cov>=5.0.0",
 ]
 
 [dependency-groups]
 dev = [
     "ruff>=0.14.5",
-    "pytest>=8.4.2",
+    "pytest>=9.0.2",
 ]
 
 [project.urls]
