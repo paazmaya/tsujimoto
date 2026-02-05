@@ -97,7 +97,59 @@ class CNNConfig(OptimizationConfig):
 
 @dataclass
 class RNNConfig(OptimizationConfig):
-    """Configuration for RNN-based approaches."""
+    """
+    Configuration for RNN-based approaches.
+
+    Supports 5 model variants:
+    - basic_rnn: Spatial sequence processing with grid scanning
+    - stroke_rnn: Stroke-order aware temporal processing
+    - simple_radical_rnn: Simple radical decomposition (500 vocab)
+    - hybrid_cnn_rnn: Combined CNN-RNN architecture
+    - linguistic_radical_rnn: Advanced linguistic radical decomposition (2000 vocab)
+
+    Key parameters:
+    - model_variant: Which RNN architecture to use
+    - rnn_type: LSTM or GRU
+    - hidden_size: RNN hidden state dimension
+    - num_layers: Number of stacked RNN layers
+    - radical_vocab_size: Max 2000 for linguistic variant
+    """
+
+    # ========== MODEL VARIANT SELECTION ==========
+    model_variant: str = "hybrid_cnn_rnn"  # basic_rnn, stroke_rnn, simple_radical_rnn, hybrid_cnn_rnn, linguistic_radical_rnn
+
+    # ========== RNN PARAMETERS ==========
+    rnn_type: str = "lstm"  # lstm or gru
+    hidden_size: int = 256  # RNN hidden state dimension
+    num_layers: int = 2  # Number of stacked RNN layers
+    bidirectional: bool = True  # Use bidirectional RNN
+    dropout: float = 0.3  # Dropout in RNN layers
+
+    # ========== RADICAL DECOMPOSITION PARAMETERS ==========
+    radical_vocab_size: int = 2000  # Max radical vocabulary (500 for simple, 2000 for linguistic)
+    radical_embedding_dim: int = 128  # Dimension of radical embeddings
+    radical_encoding_type: str = "binary_tree"  # binary_tree, one_hot, or learned
+
+    # ========== CNN BACKBONE PARAMETERS ==========
+    cnn_channels: Tuple[int, ...] = (32, 64, 128)  # Channel progression for CNN components
+
+    def to_dict(self) -> Dict:
+        config = super().to_dict()
+        config.update(
+            {
+                "model_variant": self.model_variant,
+                "rnn_type": self.rnn_type,
+                "hidden_size": self.hidden_size,
+                "num_layers": self.num_layers,
+                "bidirectional": self.bidirectional,
+                "dropout": self.dropout,
+                "radical_vocab_size": self.radical_vocab_size,
+                "radical_embedding_dim": self.radical_embedding_dim,
+                "radical_encoding_type": self.radical_encoding_type,
+                "cnn_channels": self.cnn_channels,
+            }
+        )
+        return config
 
 
 @dataclass

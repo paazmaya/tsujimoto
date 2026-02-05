@@ -569,7 +569,8 @@ def train_radical_rnn(args):
 
     # ========== CREATE MODEL ==========
     logger.info("🧠 CREATING MODEL...")
-    device = torch.device(config.device)
+    device = verify_and_setup_gpu()
+    device = torch.device(device)
     model = RadicalRNNClassifier(num_classes=config.num_classes, config=config)
 
     # ========== TRAINING SETUP ==========

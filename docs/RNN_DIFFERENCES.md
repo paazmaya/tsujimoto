@@ -1,8 +1,28 @@
-# RNN Training Models: Comparison with CNN and Radical RNN
+# RNN Training Models: Unified Architecture Comparison
 
 ## Overview
 
-This document compares the RNN-based kanji recognition approaches with the existing Plain CNN and Radical RNN implementations, documenting their differences, strengths, and use cases.
+This document compares the **5 RNN-based kanji recognition approaches** available in the unified RNN training framework with the existing Plain CNN implementation. All RNN variants are now consolidated in a single training script (`train_rnn.py`) for easier maintenance and experimentation.
+
+**Available RNN Variants:**
+1. **Basic RNN** (`basic_rnn`) - Spatial grid scanning with bidirectional LSTM
+2. **Stroke RNN** (`stroke_rnn`) - Stroke-order aware temporal processing
+3. **Simple Radical RNN** (`simple_radical_rnn`) - Simple radical decomposition (500 vocab)
+4. **Hybrid CNN-RNN** (`hybrid_cnn_rnn`) - Combined CNN+RNN architecture ⭐ **Best Accuracy**
+5. **Linguistic Radical RNN** (`linguistic_radical_rnn`) - Advanced radical decomposition (2000 vocab)
+
+## Quick Start
+
+```bash
+# Train the best-performing variant (Hybrid CNN-RNN)
+uv run python scripts/train.py rnn --model-type hybrid_cnn_rnn --epochs 30
+
+# Train with linguistic radical decomposition
+uv run python scripts/train.py rnn --model-type linguistic_radical_rnn --epochs 30
+
+# Train simple radical variant
+uv run python scripts/train.py rnn --model-type simple_radical_rnn --epochs 30
+```
 
 ## Architecture Comparison
 
@@ -38,46 +58,95 @@ Typical: 2-5M for ETL9G (3036 classes), 12-25M for combined dataset (43427 class
 
 ---
 
-### 2. Radical RNN (`train_radical_rnn.py`)
+### 2. Unified RNN Framework (`train_rnn.py`)
 
 **Architecture Approach:**
-- Decomposes kanji into radical (component) sequences
-- Uses radical embeddings + LSTM for sequence processing
-- Leverages linguistic structure of kanji characters
-- Encodes 3000+ characters as combinations of 200-500 radicals
+- Single training script supporting 5 different RNN variants
+- Unified configuration via `RNNConfig` in `src/lib/config.py`
+- Consistent checkpoint management and training infrastructure
+- Model-agnostic dataset and trainer classes
 
-**Radical Decomposition Theory:**
+**Consolidated Structure:**
 ```
-Example: 明 (brightness) = 日 (sun) + 月 (moon)
+scripts/train_rnn.py
+  ├── Model Definitions
+  │   ├── KanjiRNN (basic_rnn)
+  │   ├── StrokeBasedRNN (stroke_rnn)
+  │   ├── SimpleRadicalRNN (simple_radical_rnn)
+  │   ├── HybridCNNRNN (hybrid_cnn_rnn)
+  │   └── LinguisticRadicalRNN (linguistic_radical_rnn)
+  ├── Unified Dataset (RNNKanjiDataset)
+  ├── Collate Functions (per variant)
+  ├── Unified Trainer (RNNTrainer)
+  └── Model Factory (create_rnn_model)
+```
 
-Benefits:
-1. Vocabulary reduction: 3000+ chars → 500 radicals
-2. Zero-shot learning: New chars from known radicals
-3. Improved generalization
-4. More semantically meaningful features
+**Configuration:**
+```python
+from src.lib import RNNConfig
+
+config = RNNConfig(
+    model_variant="hybrid_cnn_rnn",  # Choose variant
+    rnn_type="lstm",                  # lstm or gru
+    hidden_size=256,                  # RNN hidden dimension
+    num_layers=2,                     # Stacked RNN layers
+    bidirectional=True,               # Bidirectional processing
+    dropout=0.3,                      # Dropout rate
+    radical_vocab_size=2000,          # Max 2000 for linguistic variant
+    learning_rate=0.001,
+    epochs=30,
+)
 ```
+
+---
+
+### 2a. Basic RNN (`basic_rnn`)
+
+**Architecture Approach:**
+- Treats image as a spatial sequence using grid scanning
+- 8×8 grid = 64 sequence elements
+- 4 features per cell: [mean, std, max, min]
+- Bidirectional LSTM for context aggregation
 
 **Model Architecture:**
 ```
-Input Image → Radical Extraction → Radical Embedding Layer
-  → Bi-directional LSTM → Classification Head
+Input Image (64×64) → Grid Scanning (8×8 cells)
+  → Sequence (64 timesteps × 4 features)
+  → Bidirectional LSTM → Mean Pooling → Classification
 ```
-
-**Key Components:**
-- `RadicalExtractor`: Converts images to radical sequences
-- Embedding layer: Projects radical IDs to dense vectors
-- LSTM with attention for temporal relationships
-- Configurable encoding types (one_hot, binary_tree, learned)
 
 **Model Parameters:**
 ```
-Typical: 1-3M parameters (70-80% reduction vs CNN)
-- Radical vocab: ~500 embeddings × 128 dims = 64K params
-- LSTM: Moderate recurrent parameters
-- Classification head: Flexible for class count
+Typical: 2-3M parameters
+- LSTM: 256 hidden × 2 layers × bidirectional
+- Classification head: Adjustable for class count
 ```
 
 **Strengths:**
+- Models spatial relationships as sequences
+- Captures local and global context via bidirectional processing
+- Simple baseline for RNN approaches
+- Efficient training with fixed-length sequences
+
+**Weaknesses:**
+- Arbitrary grid scanning order (not stroke order)
+- Loses fine-grained spatial structure
+- Fixed grid size limits flexibility
+
+**Use Cases:**
+- Baseline RNN comparison
+- Understanding spatial sequence modeling
+- Quick experimentation with RNN hyperparameters
+
+---
+
+### 2b. Stroke RNN (`stroke_rnn`)
+
+**Architecture Approach:**
+- Extracts stroke sequences from images using contour detection
+- Models temporal stroke order and writing patterns
+- Multi-head attention for stroke importance weighting
+- Variable-length sequences (max 30 strokes)
 - Significant parameter reduction (80-90% fewer than CNN)
 - Semantically meaningful representations via radicals
 - Better generalization to new character variations

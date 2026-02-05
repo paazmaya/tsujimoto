@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 # Add parent directory to path to import src/lib
@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.lib import (
     CheckpointManager,
     CNNConfig,
+    SimpleDataset,
     get_dataset_directory,
     get_optimizer,
     get_scheduler,
@@ -38,38 +39,7 @@ from src.lib import (
 
 logger = setup_logger(__name__)
 
-
-class ETL9GDataset(Dataset):
-    """Efficient dataset for ETL9G with memory management"""
-
-    def __init__(self, x, y, augment=False):  # noqa: N803
-        self.X = torch.FloatTensor(x)
-        self.y = torch.LongTensor(y)
-        self.augment = augment
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        image = self.X[idx]
-        label = self.y[idx]
-
-        if self.augment and torch.rand(1) < 0.3:
-            # =========================
-            # DATA AUGMENTATION ALGORITHMS - ADJUSTABLE
-            # =========================
-            # Current: Simple Gaussian noise augmentation
-            # Alternatives: rotation, elastic deformation, stroke width variation, shearing
-            # Probability: 0.3 (30% of training samples)
-            # Noise level: 0.05 (5% of pixel intensity range)
-            noise = torch.randn_like(image) * 0.05
-            image = torch.clamp(image + noise, 0, 1)
-
-            # Other augmentation options (commented out):
-            # image = transforms.RandomRotation(degrees=15)(image.reshape(64, 64)).flatten()
-            # image = transforms.RandomAffine(degrees=0, translate=(0.1, 0.1))(image.reshape(64, 64)).flatten()
-
-        return image, label
+# Note: Using SimpleDataset from src.lib for data loading with augmentation support
 
 
 class ChannelAttention(nn.Module):
@@ -515,7 +485,7 @@ class ProgressiveTrainer:
         return best_val_acc
 
 
-def create_balanced_loaders(x, y, batch_size, test_size=0.15, val_size=0.15):  # noqa: N803
+def create_balanced_loaders(x, y, batch_size, test_size=0.1, val_size=0.1):  # noqa: N803
     """Create balanced data loaders with stratification"""
 
     logger.debug("Creating stratified splits...")
@@ -533,7 +503,7 @@ def create_balanced_loaders(x, y, batch_size, test_size=0.15, val_size=0.15):  #
         # Use simple random splitting when stratification isn't possible
 
         # First split: train+val vs test
-        X_temp, X_test, y_temp, y_test = train_test_split(
+        x_temp, x_test, y_temp, y_test = train_test_split(
             x,
             y,
             test_size=test_size,
@@ -542,15 +512,15 @@ def create_balanced_loaders(x, y, batch_size, test_size=0.15, val_size=0.15):  #
 
         # Second split: train vs val
         val_size_adj = val_size / (1 - test_size)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp, test_size=val_size_adj, random_state=42
+        x_train, x_val, y_train, y_val = train_test_split(
+            x_temp, y_temp, test_size=val_size_adj, random_state=42
         )
     else:
         # Use stratified splitting when we have enough samples
         logger.debug("✅ Using stratified splitting (recommended for balanced training)")
 
         # First split: train+val vs test
-        X_temp, X_test, y_temp, y_test = train_test_split(
+        x_temp, x_test, y_temp, y_test = train_test_split(
             x,
             y,
             test_size=test_size,
@@ -560,16 +530,16 @@ def create_balanced_loaders(x, y, batch_size, test_size=0.15, val_size=0.15):  #
 
         # Second split: train vs val
         val_size_adj = val_size / (1 - test_size)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp, test_size=val_size_adj, stratify=y_temp, random_state=42
+        x_train, x_val, y_train, y_val = train_test_split(
+            x_temp, y_temp, test_size=val_size_adj, stratify=y_temp, random_state=42
         )
 
-    logger.debug(f"Data split: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+    logger.debug(f"Data split: Train={len(x_train)}, Val={len(x_val)}, Test={len(x_test)}")
 
     # Create datasets with augmentation for training
-    train_dataset = ETL9GDataset(X_train, y_train, augment=True)
-    val_dataset = ETL9GDataset(X_val, y_val, augment=False)
-    test_dataset = ETL9GDataset(X_test, y_test, augment=False)
+    train_dataset = SimpleDataset(x_train, y_train, augment=True)
+    val_dataset = SimpleDataset(x_val, y_val, augment=False)
+    test_dataset = SimpleDataset(x_test, y_test, augment=False)
 
     # Create loaders
     train_loader = DataLoader(
@@ -636,9 +606,9 @@ def train_cnn(args):
         metadata = json.load(f)
     num_classes = metadata.get("num_classes", 3036)
 
-    # Create dataset factory for ETL9GDataset
+    # Create dataset factory for SimpleDataset
     def create_etl_dataset(x: np.ndarray, y: np.ndarray):
-        return ETL9GDataset(x, y, augment=False)
+        return SimpleDataset(x, y, augment=False)
 
     # Prepare dataset using unified helper
     (x, y), num_classes_calc, _, _ = prepare_dataset_and_loaders(

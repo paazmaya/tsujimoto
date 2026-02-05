@@ -95,30 +95,100 @@ class HiGITAConfig:
 
 
 def create_synthetic_text_data(
-    labels: np.ndarray, num_samples: Optional[int] = None
+    images: torch.Tensor, labels: np.ndarray, num_samples: Optional[int] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Create synthetic text representations (stroke and radical codes)
+    Create text representations (stroke and radical codes) from images.
 
-    For real application, this would come from CJK radical decomposition database.
-    Currently generates random representations for proof-of-concept.
+    Uses visual feature extraction to create consistent pseudo-stroke and pseudo-radical
+    representations based on actual image content rather than random data.
+
+    Args:
+        images: Batch of images (batch_size, 1, 64, 64)
+        labels: Character labels
+        num_samples: Number of samples (defaults to batch size)
+
+    Returns:
+        stroke_codes: (batch_size, max_strokes) tensor
+        radical_codes: (batch_size, max_radicals) tensor
     """
     if num_samples is None:
         num_samples = len(labels)
 
-    # Synthetic stroke codes (each character has ~5-15 strokes)
-    stroke_lengths = np.random.randint(5, 16, num_samples)
-    max_strokes = max(stroke_lengths)
-    stroke_codes = np.zeros((num_samples, max_strokes), dtype=np.int64)
-    for i, length in enumerate(stroke_lengths):
-        stroke_codes[i, :length] = np.random.randint(0, 20, length)
+    batch_size = images.shape[0]
 
-    # Synthetic radical codes (each character has ~1-6 radicals)
-    radical_lengths = np.random.randint(1, 7, num_samples)
-    max_radicals = max(radical_lengths)
-    radical_codes = np.zeros((num_samples, max_radicals), dtype=np.int64)
-    for i, length in enumerate(radical_lengths):
-        radical_codes[i, :length] = np.random.randint(0, 214, length)
+    # Convert images to numpy for processing
+    images_np = images.cpu().numpy()
+
+    stroke_codes_list = []
+    radical_codes_list = []
+
+    for i in range(batch_size):
+        # Get single image (1, 64, 64) -> (64, 64)
+        image = images_np[i, 0]
+
+        # Extract pseudo-strokes from image using contour-like analysis
+        # Divide image into 16 regions (4x4 grid) and analyze each
+        h, w = image.shape
+        strokes = []
+        for row in range(4):
+            for col in range(4):
+                region = image[row * 16 : (row + 1) * 16, col * 16 : (col + 1) * 16]
+                density = np.mean(region < np.mean(image))
+
+                # Map density to stroke code (0-19 range)
+                stroke_code = int(density * 19)
+                if stroke_code > 0:  # Only add non-empty strokes
+                    strokes.append(stroke_code)
+
+        # Ensure minimum stroke count
+        if len(strokes) < 5:
+            strokes.extend([1] * (5 - len(strokes)))
+
+        stroke_codes_list.append(strokes)
+
+        # Extract pseudo-radicals from quadrants
+        radicals = []
+        # Top-left, top-right, bottom-left, bottom-right quadrants
+        quadrants = [
+            image[:32, :32],
+            image[:32, 32:],
+            image[32:, :32],
+            image[32:, 32:],
+        ]
+
+        for quad in quadrants:
+            density = np.mean(quad < np.mean(image))
+            mean_intensity = np.mean(quad)
+
+            # Map to radical code (0-213 range, matching Kangxi radicals)
+            radical_code = int((density * 100 + mean_intensity * 113) % 214)
+            if radical_code > 0:
+                radicals.append(radical_code)
+
+        # Center region as potential radical
+        center = image[16:48, 16:48]
+        center_density = np.mean(center < np.mean(image))
+        center_code = int(center_density * 213)
+        if center_code > 0:
+            radicals.append(center_code)
+
+        # Ensure minimum radical count
+        if len(radicals) < 2:
+            radicals.extend([1, 2])
+
+        radical_codes_list.append(radicals)
+
+    # Pad sequences to same length
+    max_strokes = max(len(s) for s in stroke_codes_list)
+    max_radicals = max(len(r) for r in radical_codes_list)
+
+    stroke_codes = np.zeros((batch_size, max_strokes), dtype=np.int64)
+    radical_codes = np.zeros((batch_size, max_radicals), dtype=np.int64)
+
+    for i, (strokes, radicals) in enumerate(zip(stroke_codes_list, radical_codes_list)):
+        stroke_codes[i, : len(strokes)] = strokes
+        radical_codes[i, : len(radicals)] = radicals
 
     return torch.from_numpy(stroke_codes), torch.from_numpy(radical_codes)
 
@@ -159,9 +229,9 @@ def train_epoch(
         # Optionally add contrastive loss
         total_batch_loss = ce_loss
         if text_encoder and contrastive_loss_fn:
-            # Generate synthetic text for this batch
+            # Generate text representations from actual images
             stroke_codes, radical_codes = create_synthetic_text_data(
-                labels.cpu().numpy(), len(labels)
+                images, labels.cpu().numpy(), len(labels)
             )
             stroke_codes = stroke_codes.to(device)
             radical_codes = radical_codes.to(device)
@@ -294,8 +364,8 @@ def train_hiercode_higita(args):
     config.checkpoint_dir = checkpoint_dir
     config.data_dir = data_dir
 
-    device = "cuda"
-    logger.info(f"🔧 Device: {device} (auto-detected)")
+    device = verify_and_setup_gpu()
+    logger.info(f"🔧 Device: {device}")
 
     # Create checkpoint directory
     Path(config.checkpoint_dir).mkdir(parents=True, exist_ok=True)

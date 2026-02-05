@@ -67,19 +67,112 @@ class TestRNNArchitectures:
     """Test RNN-based model architectures"""
 
     def test_kanji_rnn_forward(self):
-        """Test KanjiRNN forward pass"""
+        """Test KanjiRNN (basic_rnn) forward pass"""
         try:
             from scripts.train_rnn import KanjiRNN
 
             model = KanjiRNN(num_classes=100)
             # RNN expects (batch, seq_len, features)
-            x = torch.randn(4, 10, 4)
+            x = torch.randn(4, 64, 4)  # 64 timesteps, 4 features (grid scanning)
             output = model(x)
 
-            assert output.shape == (4, 100)
-            assert not torch.isnan(output).any()
+            assert output.shape == (4, 100), f"Expected (4, 100), got {output.shape}"
+            assert not torch.isnan(output).any(), "Output contains NaN"
+            assert not torch.isinf(output).any(), "Output contains Inf"
         except ImportError:
             pytest.skip("KanjiRNN not available")
+
+    def test_stroke_based_rnn_forward(self):
+        """Test StrokeBasedRNN (stroke_rnn) forward pass"""
+        try:
+            from scripts.train_rnn import StrokeBasedRNN
+
+            model = StrokeBasedRNN(num_classes=100, max_strokes=30)
+            # Stroke RNN expects (batch, num_strokes, 8) + lengths
+            stroke_sequences = torch.randn(4, 15, 8)  # 4 samples, up to 15 strokes
+            stroke_lengths = torch.tensor([10, 12, 8, 15], dtype=torch.long)
+            output = model(stroke_sequences, stroke_lengths)
+
+            assert output.shape == (4, 100), f"Expected (4, 100), got {output.shape}"
+            assert not torch.isnan(output).any(), "Output contains NaN"
+        except ImportError:
+            pytest.skip("StrokeBasedRNN not available")
+
+    def test_simple_radical_rnn_forward(self):
+        """Test SimpleRadicalRNN (simple_radical_rnn) forward pass"""
+        try:
+            from scripts.train_rnn import SimpleRadicalRNN
+
+            model = SimpleRadicalRNN(num_classes=100, radical_vocab_size=500)
+            # Radical RNN expects radical sequences + lengths
+            radical_sequences = torch.randint(1, 500, (4, 8), dtype=torch.long)
+            radical_lengths = torch.tensor([5, 6, 4, 7], dtype=torch.long)
+            output = model(radical_sequences, radical_lengths)
+
+            assert output.shape == (4, 100), f"Expected (4, 100), got {output.shape}"
+            assert not torch.isnan(output).any(), "Output contains NaN"
+        except ImportError:
+            pytest.skip("SimpleRadicalRNN not available")
+
+    def test_hybrid_cnn_rnn_forward(self):
+        """Test HybridCNNRNN forward pass"""
+        try:
+            from scripts.train_rnn import HybridCNNRNN
+
+            model = HybridCNNRNN(num_classes=100)
+            # Hybrid CNN-RNN expects images
+            x = torch.randn(4, 1, 64, 64)
+            output = model(x)
+
+            assert output.shape == (4, 100), f"Expected (4, 100), got {output.shape}"
+            assert not torch.isnan(output).any(), "Output contains NaN"
+        except ImportError:
+            pytest.skip("HybridCNNRNN not available")
+
+    def test_linguistic_radical_rnn_forward(self):
+        """Test LinguisticRadicalRNN forward pass"""
+        try:
+            from scripts.train_rnn import LinguisticRadicalRNN
+
+            model = LinguisticRadicalRNN(
+                num_classes=100,
+                radical_vocab_size=2000,
+                radical_embedding_dim=128,
+                rnn_hidden_size=256,
+            )
+            # Linguistic radical RNN expects images (does CNN internally)
+            x = torch.randn(4, 1, 64, 64)
+            output = model(x)
+
+            assert output.shape == (4, 100), f"Expected (4, 100), got {output.shape}"
+            assert not torch.isnan(output).any(), "Output contains NaN"
+        except ImportError:
+            pytest.skip("LinguisticRadicalRNN not available")
+
+    def test_rnn_model_factory(self):
+        """Test create_rnn_model factory function"""
+        try:
+            from scripts.train_rnn import create_rnn_model
+
+            # Test all 5 variants can be created
+            variants = [
+                "basic_rnn",
+                "stroke_rnn",
+                "simple_radical_rnn",
+                "hybrid_cnn_rnn",
+                "linguistic_radical_rnn",
+            ]
+
+            for variant in variants:
+                model = create_rnn_model(variant, num_classes=100)
+                assert model is not None, f"Failed to create {variant}"
+
+            # Test invalid variant raises error
+            with pytest.raises(ValueError):
+                create_rnn_model("invalid_variant", num_classes=100)
+
+        except ImportError:
+            pytest.skip("RNN model factory not available")
 
 
 class TestHierarchicalArchitectures:

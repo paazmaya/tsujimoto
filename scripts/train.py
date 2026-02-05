@@ -9,8 +9,7 @@ Supported variants:
   - cnn         : Lightweight CNN model
   - hiercode    : HierCode (Hierarchical Codebook)
   - hiercode_higita : HierCode with Hi-GITA enhancement
-  - rnn         : RNN-based model (with multiple sub-types)
-  - radical_rnn : Radical RNN (radical-aware RNN)
+  - rnn         : RNN-based model (5 variants: basic, stroke, simple_radical, hybrid_cnn, linguistic_radical)
   - vit         : Vision Transformer (ViT with T2T)
   - qat         : Quantization-Aware Training
 
@@ -20,7 +19,6 @@ Usage:
     python scripts/train.py rnn --model-type hybrid_cnn_rnn
     python scripts/train.py vit --epochs 40
     python scripts/train.py qat --epochs 25
-    python scripts/train.py radical_rnn --epochs 35
     python scripts/train.py hiercode_higita --enable-higita-enhancement
 
 For variant-specific help:
@@ -42,7 +40,6 @@ from scripts import (
     train_hiercode,
     train_hiercode_higita,
     train_qat,
-    train_radical_rnn,
     train_rnn,
     train_vit,
 )
@@ -163,26 +160,40 @@ def hiercode_higita(**kwargs):
 @add_checkpoint_dir_option("training/rnn/checkpoints")
 @click.option(
     "--model-type",
-    type=click.Choice(["basic_rnn", "stroke_rnn", "radical_rnn", "hybrid_cnn_rnn"]),
+    type=click.Choice(
+        [
+            "basic_rnn",
+            "stroke_rnn",
+            "simple_radical_rnn",
+            "hybrid_cnn_rnn",
+            "linguistic_radical_rnn",
+        ]
+    ),
     default="hybrid_cnn_rnn",
-    help="Type of RNN model",
+    help="Type of RNN model (5 variants available)",
 )
 @click.option("--weight-decay", type=float, default=1e-4, help="Weight decay")
 @click.option("--hidden-size", type=int, default=256, help="RNN hidden size")
 @click.option("--num-layers", type=int, default=2, help="Number of RNN layers")
 @click.option("--dropout", type=float, default=0.3, help="Dropout rate")
+@click.option(
+    "--rnn-type",
+    type=click.Choice(["lstm", "gru"]),
+    default="lstm",
+    help="RNN cell type (for linguistic variant)",
+)
 def rnn(**kwargs):
-    """Train RNN-based model for Kanji recognition."""
+    """
+    Train RNN-based model for Kanji recognition.
+
+    Available variants:
+    - basic_rnn: Spatial grid scanning with LSTM
+    - stroke_rnn: Stroke sequence processing
+    - simple_radical_rnn: Simple radical decomposition (500 vocab)
+    - hybrid_cnn_rnn: Combined CNN-RNN architecture (best accuracy)
+    - linguistic_radical_rnn: Advanced radical decomposition (2000 vocab)
+    """
     _call_variant_main(train_rnn, kwargs)
-
-
-@train.command()
-@add_common_options
-@add_checkpoint_dir_option("training/radical_rnn/checkpoints")
-@click.option("--num-radicals", type=int, default=214, help="Number of radicals")
-def radical_rnn(**kwargs):
-    """Train Radical RNN model for Kanji recognition."""
-    _call_variant_main(train_radical_rnn, kwargs)
 
 
 @train.command()
@@ -230,7 +241,6 @@ def _call_variant_main(variant_module, click_kwargs):
         "train_rnn": "train_rnn",
         "train_vit": "train_vit",
         "train_qat": "train_qat",
-        "train_radical_rnn": "train_radical_rnn",
         "train_hiercode_higita": "train_hiercode_higita",
     }
 

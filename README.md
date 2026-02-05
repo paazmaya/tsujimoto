@@ -189,11 +189,11 @@ uv run python scripts/export_model_to_onnx.py --model-path training/qat/best_qat
 - `load_num_classes_from_config()` - Load num_classes from configuration JSON
 - `load_model_checkpoint()` - Comprehensive checkpoint loader with automatic architecture selection
 
-````| Parameter          | Type  | Default                         | Notes                       |
+| Parameter          | Type  | Default                         | Notes                       |
 | ------------------ | ----- | ------------------------------- | --------------------------- |
-| `--epochs`         | int   | 30                              | Training epochs             |
-| `--batch-size`     | int   | 64\*                            | \*ViT=256, Hi-GITA=32       |
-| `--learning-rate`  | float | 0.001\*                         | \*ViT=0.0005                |
+| `--epochs`         | int   | 30 (\*ViT=40)                   | Training epochs             |
+| `--batch-size`     | int   | 64 (\*ViT=256)                  | Batch size for training     |
+| `--learning-rate`  | float | 0.001 (\*ViT=0.0005)            | Initial learning rate       |
 | `--image-size`     | int   | 64                              | Input dimensions            |
 | `--num-classes`    | int   | 43,528                          | Auto-detected from metadata |
 | `--sample-limit`   | int   | None                            | Optional: limit samples     |
@@ -204,6 +204,12 @@ uv run python scripts/export_model_to_onnx.py --model-path training/qat/best_qat
 | `--resume-from`    | str   | None                            | Resume from checkpoint      |
 | `--no-checkpoint`  | bool  | False                           | Skip checkpoint loading     |
 | `--keep-last-n`    | int   | 5                               | Checkpoints to retain       |
+
+**Note**: Vision Transformer (ViT) uses different defaults optimized for transformer architectures:
+
+- Larger batch size (256 vs 64): Better gradient estimates for attention mechanisms
+- More epochs (40 vs 30): Transformers need longer training to converge
+- Lower learning rate (0.0005 vs 0.001): Prevents attention instability during training
 
 **Result models**:
 
@@ -228,29 +234,54 @@ uv run python scripts/quantize_model.py --model-path training/hiercode_higita/be
 
 # Supported model types: hiercode, hiercode-higita, cnn, qat, rnn, radical-rnn, vit
 # Note: --model-type is REQUIRED. Omitting it will cause an error.
-````
+```
 
-**Supports 4 additional RNN Architectures:**
+**Supports 5 RNN Architectures (Consolidated in unified framework):**
 
 1. **`basic_rnn`** - Grid-based spatial sequence processing
-   - Divides image into 8×8 grid with feature extraction
+   - Divides image into 8×8 grid with feature extraction per cell
    - Bidirectional LSTM with mean pooling
    - ~2-3M parameters
+   - Use case: Baseline RNN comparison
 
 2. **`stroke_rnn`** - Stroke order modeling with attention
    - Extracts stroke sequences using contour detection
-   - Multi-head attention for stroke importance
+   - Multi-head attention (8 heads) for stroke importance weighting
    - ~3-4M parameters
+   - Use case: Modeling temporal writing patterns
 
-3. **`radical_rnn`** - Alternative radical decomposition processing
-   - Embedding-based radical sequence handling
-   - Packed sequences for variable lengths
+3. **`simple_radical_rnn`** - Simple radical decomposition
+   - Radical embedding (500 vocab) + bidirectional LSTM
+   - Variable-length sequences with padding
    - ~1-2M parameters
+   - Use case: Baseline radical approach
 
-4. **`hybrid_cnn_rnn`** - Combined spatial-temporal modeling
-   - CNN backbone (4 blocks) + Bi-directional LSTM
-   - Concatenated global and spatial features
+4. **`hybrid_cnn_rnn`** ⭐ **Best Accuracy (98.4% on ETL9G)**
+   - CNN backbone (4 conv blocks: 32→64→128→256) + Bi-directional LSTM
+   - Concatenated global CNN features and spatial RNN features
    - ~4-5M parameters
+   - Use case: Production deployment, maximum accuracy
+
+5. **`linguistic_radical_rnn`** - Advanced linguistic decomposition
+   - Large radical vocabulary (2000) with CNN-to-radical mapping
+   - Learns visual-to-radical correspondence
+   - ~1-3M parameters (70-80% reduction vs pure CNN)
+   - Use case: Semantic understanding, parameter efficiency
+
+**Configuration via RNNConfig:**
+
+```python
+from src.lib import RNNConfig
+
+config = RNNConfig(
+    model_variant="hybrid_cnn_rnn",
+    rnn_type="lstm",          # or "gru"
+    hidden_size=256,
+    num_layers=2,
+    bidirectional=True,
+    radical_vocab_size=2000,  # Max for linguistic variant
+)
+```
 
 #### Quantization Options
 
