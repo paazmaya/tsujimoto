@@ -38,7 +38,7 @@ jobs:
       run: uv tool install ruff
 
     - name: Submit uv dependency snapshot
-      uses: rmuir/uv-dependency-submission@e021503b1390bff207cc96b4da354b1091607b9e # v1.0.0
+      uses: rmuir/uv-dependency-submission@c310f3dabe79ec89253160090cb74b857d193103 # v1.0.0
 
     - name: Run ruff check
       run: uv tool run ruff check --output-format=github .
