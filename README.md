@@ -836,10 +836,11 @@ uv run python scripts/train.py hiercode --data-dir dataset
 ```
 
 **Training Impact**:
-| Dataset | Classes | Samples | Per-Epoch Time | Expected Accuracy |
-|---------|---------|---------|---|---|
-| ETL9G only | 3,036 | 607K | ~1.0x | Baseline |
-| Combined (ETL6-9) | 4,154 | 934K (+53%) | ~1.5-1.8x | **+2-3% gain** |
+
+| Dataset           | Classes | Samples     | Per-Epoch Time | Expected Accuracy |
+| ----------------- | ------- | ----------- | -------------- | ----------------- |
+| ETL9G only        | 3,036   | 607K        | ~1.0x          | Baseline          |
+| Combined (ETL6-9) | 4,154   | 934K (+53%) | ~1.5-1.8x      | **+2-3% gain**    |
 
 ### Character Coverage Expansion
 

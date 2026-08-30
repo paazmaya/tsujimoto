@@ -1,770 +1,327 @@
-# Research on Chinese and Japanese Character Recognition
+# Research on Chinese Character and Kanji Recognition
 
-The most efficient ways to recognize handwritten Kanji fall into two complementary families: (1) methods that exploit the **structural composition** of characters (strokes, radicals, and components), and (2) **lightweight deep-learning architectures** built for massive vocabularies on limited hardware. The strongest recent results combine both.
+The most efficient systems for handwritten Kanji and related Han-character recognition combine visual modelling with the script's internal structure: strokes, radicals, components, glyph variants, and reading context. Recent work has expanded the task beyond isolated-character classification to zero-shot recognition, cross-temporal historical perception, line-level handwriting recognition, document restoration, scene-text understanding, and efficient edge deployment.
 
-**How to read this document:**
+Much of the relevant literature is published as **Chinese character recognition (CCR)** because the methods operate on Han characters shared across Chinese and Japanese writing. Such work is technically relevant to Kanji, but Chinese benchmark results should not be described as direct Japanese results unless the study evaluates Japanese data explicitly.
 
-- **Sections 1–2** cover the core methods (structure-based and lightweight architectures), with `> Implementation highlight` callouts marking the approaches most worth building in Tsujimoto.
-- **Sections 3–9** list the libraries, toolkits, code, and links needed to implement them.
-- **Sections 10–14** compare methods, datasets, and the most recent (2024–2026) developments, including historical/degraded-document recognition.
-- **Section 15** turns all of this into a prioritized, repo-specific implementation roadmap; **Section 16** is the reference list.
+## 1. Methods Focusing on Structure
 
-> **Note on figures:** Some accuracy/parameter numbers in the source papers are author-reported or estimated. Where a claim is stronger than the published abstract supports, it is flagged as an **unverified estimate** rather than removed.
+Several techniques improve recognition by decomposing characters into reusable units. This is particularly useful for large inventories, rare characters, writer variation, and zero-shot recognition.
 
-## 1. Methods Focusing on Character Structure and Components (Radicals)
+1. **Radical-level Ideograph Encoding:** This approach uses embeddings of radicals composing Chinese and Japanese ideographs rather than relying only on independent character embeddings (Radical-level Ideograph Encoder for RNN-based Sentiment Analysis of Chinese and Japanese, Ke & Hagiwara, 2017).
+   - The radical-level strategy reduces the effective vocabulary and shares information between characters with common components.
+   - It is suitable for Chinese and Japanese text systems with limited parameters.
+   - The original approach combines a CNN word-feature encoder with a bidirectional RNN document-feature encoder.
 
-Several techniques improve efficiency by decomposing characters, which aids in handling large character sets and recognizing characters with few or no training samples (zero-shot recognition).
+2. **Hierarchical Decomposition and Nearest-Neighbor Classification:** A framework for Japanese historical characters, _kuzushiji_, learns reusable character parts and transfers knowledge from synthesized fonts to historical handwriting (Japanese historical character recognition by focusing on character parts, Ishikawa, Miyazaki, & Omachi, 2024).
+   - Shared components address the severe sample imbalance found in historical Japanese documents.
+   - The method supports few-shot and zero-shot recognition by matching learned part representations.
+   - It reports nearly 48% accuracy for zero-sampled _kuzushiji_, where naive classification methods were unable to recognize the characters.
 
-1.  **Radical-level Ideograph Encoding:** This approach focuses on utilizing embeddings of the radicals that compose the Chinese characters (which include Kanji) rather than relying on embeddings of the characters themselves ([Radical-level Ideograph Encoder for RNN-based Sentiment Analysis of Chinese and Japanese](https://arxiv.org/abs/1708.03312), Ke & Hagiwara, 2017).
-    - This radical-level strategy is considered highly **cost-effective** for machine learning tasks concerning Chinese and Japanese (Radical-level Ideograph Encoder for RNN-based Sentiment Analysis of Chinese and Japanese, Ke & Hagiwara, 2017).
-    - It achieves results comparable to character embedding-based models while requiring approximately **90% smaller vocabulary** (Radical-level Ideograph Encoder for RNN-based Sentiment Analysis of Chinese and Japanese, Ke & Hagiwara, 2017).
-    - This method also results in significantly fewer parameters: at least **13% fewer parameters** compared to character embedding-based models, and 80% to 91% fewer parameters when compared to word embedding-based models (Radical-level Ideograph Encoder for RNN-based Sentiment Analysis of Chinese and Japanese, Ke & Hagiwara, 2017).
-    - The model achieves this efficiency using a CNN word feature encoder and a bi-directional RNN document feature encoder, where the CNN encoder efficiently extracts temporal features and reduces parameters through weight sharing (Radical-level Ideograph Encoder for RNN-based Sentiment Analysis of Chinese and Japanese, Ke & Hagiwara, 2017).
+3. **Radical-based Online Recognition Systems:** Online recognizers can combine radical appearance, geometric relations, vector quantization, Markov random fields, and structured dictionaries. These methods are useful when digital ink or pen trajectories are available rather than only raster images (Advances in online handwritten recognition in the last decades, Ghosh, Sen, Obaidullah, et al., 2022, citing Ma & Liu, 2009; Zhu & Nakagawa).
 
-2.  **Hierarchical Decomposition and Nearest Neighbor Classification:** A framework specifically designed for recognizing Japanese historical characters, _kuzushiji_ (a cursive form of Kanji), achieves efficiency for few- and zero-sampled characters by **learning character parts** ([Japanese historical character recognition by focusing on character parts](https://doi.org/10.1016/j.patcog.2023.110181), Ishikawa, Miyazaki, & Omachi, 2024).
-    - This approach mitigates the critical problem of sample imbalance, which is severe in historical Japanese documents, by leveraging the fact that multiple characters share common components (Japanese historical character recognition by focusing on character parts, Ishikawa, Miyazaki, & Omachi, 2024).
-    - It transfers knowledge of character parts from synthesized font images to _kuzushiji_ using pre-training and fine-tuning, allowing for **zero-shot recognition** using a Nearest Neighbor classifier based on font images (Japanese historical character recognition by focusing on character parts, Ishikawa, Miyazaki, & Omachi, 2024).
-    - This method achieved nearly **48% accuracy for zero-sampled kuzushiji**, which were impossible to recognize using naive classification methods (Japanese historical character recognition by focusing on character parts, Ishikawa, Miyazaki, & Omachi, 2024).
+4. **Hierarchical Grammatical Modelling:** Stochastic Context-Free Grammars combined with Hidden Markov Models have been proposed to model character generation hierarchically and support writer-independent online recognition (Advances in online handwritten recognition in the last decades, Ghosh, Sen, Obaidullah, et al., 2022, citing Ota, Yamamoto, Sako, & Sagayama, 2007).
 
-3.  **Radical-based Online Recognition Systems:** A radical-based online handwritten Chinese character recognition system combines appearance-based radical recognition and geometric background, resulting in comparable accuracy to state-of-the-art holistic statistical methods ([Advances in online handwritten recognition in the last decades](https://doi.org/10.1016/j.cosrev.2022.100515), Ghosh, Sen, Obaidullah, et al., 2022, citing Ma & Liu, 2009). A compact online recognizer for a large handwritten Japanese character set was also developed using **vector quantization on radicals**, combined with Markov random field (MRF) and structured dictionary representation (Advances in online handwritten recognition in the last decades, Ghosh, Sen, Obaidullah, et al., 2022, citing Zhu & Nakagawa).
+## 2. Lightweight and Hierarchical Deep Learning
 
-4.  **Hierarchical Grammatical Modeling:** The Stochastic Context-Free Grammar (SCFG) hierarchical structure, combined with Hidden Markov Models (HMM), has been proposed to model Kanji character generation, functioning effectively as a writer-independent recognition system (Advances in online handwritten recognition in the last decades, Ghosh, Sen, Obaidullah, et al., 2022, citing Ota, Yamamoto, Sako, & Sagayama, 2007).
+Large character inventories make a conventional flat softmax expensive. Hierarchical encodings, prototype matching, quantization, and small backbones reduce classification cost and make deployment on mobile or edge hardware more realistic.
 
-## 2. Lightweight Deep Learning Architectures
+### HierCode
 
-Efficiency can also be achieved by designing compressed network architectures that minimize parameters and computational load, particularly in the critical classification layer.
+**[HierCode: A Lightweight Hierarchical Codebook for Zero-shot Chinese Text Recognition](https://arxiv.org/abs/2403.13761v1)** (March 2024, Zhang et al.) proposes a multi-hot hierarchical codebook rather than a conventional one-hot classification layer.
 
-### Hierarchical Encoding Methods for Large-Scale Character Recognition
+- A binary-tree representation encodes character relationships and supports similarity-based inference.
+- Prototype learning gives characters distinctive code representations.
+- A lightweight backbone such as [MobileNetV3](https://pytorch.org/vision/stable/models/mobilenetv3.html) can reduce the classification burden.
+- The method is designed for out-of-vocabulary recognition when a new character shares structural information with known characters.
+- The paper evaluates handwritten, scene, document, historical, and web-text recognition settings.
 
-The most promising direction for efficient kanji / Chinese character recognition combines **hierarchical decomposition** (strokes → radicals → characters) with **multi-level representation learning**. Instead of treating each character as an atomic class, these methods encode the shared structure between characters, which shrinks the classification layer and enables zero-shot recognition of characters never seen during training.
+### Hi-GITA
 
-#### HierCode (March 2024 - Zhang et al.)
+**[Zero-Shot Chinese Character Recognition with Hierarchical Multi-Granularity Image-Text Aligning](https://arxiv.org/abs/2505.24837v1)** (May 2025, Zhu et al.) was already present in the original document and is retained here as an existing method rather than a new addition.
 
-**Overview**: [HierCode: A Lightweight Hierarchical Codebook for Zero-shot Chinese Text Recognition](https://arxiv.org/abs/2403.13761v1)
+- Hi-GITA aligns visual and textual character representations at stroke, radical, and complete-character levels.
+- Its image encoder extracts hierarchical representations from character images, while its text encoder represents stroke sequences, radical sequences, and character descriptions.
+- Multi-Granularity Fusion Modules connect the image and text streams.
+- A Fine-Grained Decoupled Image-Text Contrastive loss aligns corresponding representations across levels.
+- The authors report roughly 20% improvement in handwritten-character and radical zero-shot settings over earlier methods.
+- The method is relevant to Kanji because Chinese characters and Japanese Kanji share compositional stroke and component structure, although the reported experiments are Chinese-character experiments.
 
-- **Problem Solved**: Traditional one-hot encoding creates massive classification layers (>60% of model parameters), making deployment infeasible
-- **Solution**: Multi-hot hierarchical encoding using a binary tree structure
-- **Architecture**:
-  - Lightweight backbone encoder (e.g., MobileNet v3 small)
-  - Hierarchical binary tree codebook for character representation
-  - Prototype learning for distinctive encodings
-  - Similarity-based inference without softmax
+The original document also contains more specific Hi-GITA figures, including exact accuracy ranges, parameter counts, latency, loss weights, and patch counts. Those figures should be retained only after checking the full paper tables and implementation; the abstract establishes the architecture and the approximately 20% zero-shot improvement, but not all of those detailed values.
 
-**Key Achievements**:
+### GL-HPN: Global-Local Hierarchical Perception Network
 
-- ✅ **68.3% parameter reduction** when combined with MobileNet v3 small
-- ✅ **Zero-shot recognition** of Out-Of-Vocabulary (OOV) characters using shared radicals
-- ✅ **State-of-the-art performance** across multiple benchmarks:
-  - Handwritten text recognition
-  - Scene text recognition
-  - Document recognition
-  - Ancient/historical text recognition
-  - Web text recognition
-- ✅ **Fast inference speed** suitable for deployment
-- ✅ Supports 3,036+ character classes efficiently
+**[Zero-Shot Chinese Character Recognition via Global-Local Dual-Branch Alignment and Hierarchical Inference](https://arxiv.org/abs/2605.08814)** (May 2026, Cao, Xu, & Diao) proposes a Global-Local Hierarchical Perception Network for zero-shot Chinese character recognition.
 
-**Technical Innovations**:
+- The global branch learns whole-character image and IDS representations for efficient coarse retrieval.
+- The local branch uses patch-token interaction to distinguish component-level differences that a single global vector may miss.
+- A structure-filtering mask suppresses IDS operators that are structurally meaningful but do not correspond directly to visual entities.
+- A coarse-to-fine inference strategy retrieves candidates globally and applies local re-ranking only to the Top- candidates.
+- Parameter-free multiplicative fusion combines normalized global and local posterior scores.
+- The paper reports competitive performance across zero-shot splits, especially in low-resource settings, while substantially reducing large-scale candidate-retrieval cost.
 
-- Multi-hot encoding (vs one-hot) reduces dimensionality
-- Binary tree structure exploits hierarchical character structure
-- Prototype learning ensures distinctive character representations
-- Line-level recognition capability (not just character-level)
+GL-HPN is a natural successor to HierCode and Hi-GITA in the document's zero-shot section. Its key contribution is not simply another structural encoder, but a scalable inference policy that reserves expensive local matching for a small candidate set.
 
-> **Implementation highlight (HierCode):** This is the lowest-risk, highest-leverage upgrade for Tsujimoto. Swap the existing one-hot classifier for a multi-hot hierarchical codebook over a MobileNet v3-small backbone, then replace softmax with similarity-based inference. Expect a large parameter/footprint reduction and built-in zero-shot support for rare kanji, with a production-ready code path already partially present in the repo (`HierCodeClassifier`).
+## 3. Stroke, Radical, and Sequential Recognition
 
-#### Hi-GITA (May 2025 - Zhu et al.) - **Latest Advancement**
+RNNs remain relevant when the input is a sequence of pen coordinates, stroke images, or characters in a line. Transformers are increasingly useful when larger datasets and more compute are available.
 
-**Overview**: [Zero-Shot Chinese Character Recognition with Hierarchical Multi-Granularity Image-Text Aligning](https://arxiv.org/abs/2505.24837v1)
+1. **Stroke-based RNN:** Processes each stroke with coordinate, timing, direction, and pen-state information.
+2. **Radical-sequence RNN:** Represents a character as an ordered sequence of components and processes the sequence with a bidirectional RNN.
+3. **CNN-RNN hybrid:** Uses CNN layers for raster appearance and RNN layers for stroke or line-level sequence information.
+4. **Attention-enhanced sequence models:** Focus processing on discriminative strokes or components.
+5. **Stroke-level self-supervision:** Learns from pen trajectories or stroke images and can support recognition when character labels are scarce.
 
-**Motivation**: Build on HierCode's success by adding contrastive image-text alignment for improved zero-shot performance
+### DTRNet: Dual Text-Radical Decoding
 
-- **Three-Level Hierarchical Processing** (vs HierCode's two levels):
-  1. **Stroke-Level**: 64 patches extracted from character images (fine-grained strokes)
-  2. **Radical-Level**: 16 learned groupings of strokes into radicals (medium-grained)
-  3. **Character-Level**: Holistic character representation (coarse-grained)
+**[DTRNet: Dual Text-Radical Decoding for Handwritten Chinese Text Recognition with Faked Character Detection](https://arxiv.org/abs/2608.05848)** (August 2026, Li, Zhu, & Huang) introduces a line-level framework for recognizing handwritten Chinese text while detecting deliberately fabricated or structurally invalid characters.
 
-- **Multi-Modality Integration**:
-  - **Image Side**: Image Multi-Granularity Encoder extracts features at three hierarchical levels
-  - **Text Side**: Text Multi-Granularity Encoder processes stroke sequences, radical sequences, and character descriptions
-  - **Fusion Modules**: Multi-Granularity Fusion Modules bridge image and text features at each level
-  - **Contrastive Learning**: Fine-Grained Decoupled Image-Text Contrastive loss aligns representations across levels
+- The text branch performs context-aware line-level transcription.
+- The radical branch predicts legal Ideographic Description Sequences (IDS) as independent structural evidence.
+- A character is flagged as potentially fake when the transcribed character and its predicted radical structure do not agree with the lexicon.
+- IDS-Guided Confidence Adjustment (IGCA) refines recognition predictions using structural evidence during inference.
+- The architecture preserves character-wise structural verification without giving up the efficiency of line-level recognition.
+- The paper reports strong recognition performance alongside interpretable radical-level evidence and states that code, checkpoints, and processed data are publicly available.
+- The work was accepted as an oral paper at ACM Multimedia 2026.
 
-- **Loss Weighting Strategy** (learnable, level-aware): stroke-level for local detail, radical-level for structural composition, and character-level for holistic identity. The paper learns the relative weighting rather than fixing it.
+DTRNet is relevant to Kanji recognition in two ways. First, its dual-decoder design offers a practical way to combine context-aware text recognition with component-level verification. Second, the idea of a structurally invalid or suspicious character can be adapted to quality control, handwriting tutoring, OCR uncertainty detection, and historical-document transcription.
 
-**Reported Achievements** (from the paper's abstract; exact numbers should be re-verified against the PDF/code before quoting in deployment decisions):
+## 4. CNN and Vision-Transformer Recognition
 
-- ✅ **Significantly outperforms prior zero-shot Chinese character recognition methods**, with roughly **20% improvement** in handwritten character and radical zero-shot settings
-- ✅ Consistent gains in standard (non-zero-shot) recognition
-- ✅ **Learnable stroke-to-radical assignment** that discovers groupings instead of relying on fixed radical tables
-- ✅ Hierarchical attention with importance flowing from fine-grained strokes to coarse character identity
+An ensemble of three CNNs achieved 96.43% classification accuracy on the top 150 classes of the imbalanced Kuzushiji-Kanji dataset (Recognition of Handwritten Japanese Characters Using Ensemble of Convolutional Neural Networks, Solis, Zarkovacki, Ly, & Atyabi, 2023).
 
-> **Note on specific figures:** Earlier drafts of this document cited precise numbers (85–90% zero-shot accuracy, ~2.1M parameters, 8–10 ms/image on CPU, fixed 0.3/0.5/0.2 loss weights). Those are stronger than what the abstract supports and are treated here as **unverified estimates** until confirmed from the source paper or released code.
+- CNN ensembles can deliver high accuracy on restricted or frequent-character inventories.
+- Their disadvantages are larger deployment cost, slower inference, and limited support for unseen classes compared with structurally encoded methods.
+- Transfer learning reduced training time in one component on the K-49 dataset.
+- Vision Transformers are useful when character images, local patches, and document context must be integrated, but they usually require more data and compute than compact CNN baselines.
 
-> **Implementation highlight (Hi-GITA):** The biggest practical win for Tsujimoto is the **learnable stroke-to-radical assignment** layered on top of HierCode. You can extend the existing `HierCodeWithHiGITA` module incrementally: (1) add the three-level image encoder, (2) add a text-side stroke/radical/character encoder, and (3) train with a fine-grained decoupled image-text contrastive loss. Treat it as a second-phase upgrade after a HierCode baseline is stable.
+## 5. Historical and Degraded Japanese Documents
 
-**Comparison: HierCode vs Hi-GITA**
-
-| Aspect                   | HierCode               | Hi-GITA                                                   |
-| ------------------------ | ---------------------- | --------------------------------------------------------- |
-| **Publication**          | March 2024             | May 2025                                                  |
-| **Hierarchy Levels**     | 2-level                | 3-level (strokes, radicals, characters)                   |
-| **Image Representation** | Single-level           | Multi-granularity (stroke, radical, character)            |
-| **Text Representation**  | Character descriptions | Multi-granularity (stroke seq, radical seq, descriptions) |
-| **Learning Approach**    | Multi-hot encoding     | Contrastive image-text alignment                          |
-| **Zero-Shot Accuracy**   | Strong                 | Higher (~20% gain reported in zero-shot settings)         |
-| **Standard Accuracy**    | State-of-the-art       | Reported improvement over HierCode                        |
-| **Parameters**           | Very compact           | Slightly larger, in exchange for higher accuracy          |
-| **Key Innovation**       | Efficient encoding     | Multi-modal contrastive learning                          |
-| **Learnable Radicals**   | Fixed                  | ✅ Learnable stroke-to-radical assignment                 |
+Clean character benchmarks do not represent archival conditions. Fading, stains, bleed-through, seals, warped pages, and unusual layouts can dominate recognition error.
 
-**Technical Novelty**:
+### DKDS
 
-- Fine-grained decoupled contrastive loss (vs standard contrastive loss)
-- Hierarchical attention mechanisms
-- Multi-level fusion modules
-- Learnable radical discovery from stroke patterns
+**[DKDS: A Benchmark Dataset of Degraded Kuzushiji Documents with Seals for Detection and Binarization](https://arxiv.org/abs/2511.09117)** (2025, Ju et al.; revised versions released in 2026) introduces a benchmark for degraded _kuzushiji_ documents containing seal interference.
 
-### RNN-Based Approaches for Kanji Recognition
+- The benchmark separates character-and-seal detection from document binarization.
+- Detection baselines use recent YOLO models to locate _kuzushiji_ characters and seals.
+- Binarization experiments compare traditional methods, K-means-assisted approaches, GAN-based methods, and an improved conditional GAN.
+- DKDS demonstrates that recognition quality depends on document restoration and object detection before classification.
+- The [DKDS project page and code repository](https://github.com/RuiyangJu/DKDS) provide dataset and implementation resources.
 
-Several research findings indicate that **Recurrent Neural Networks (RNNs)** can be highly effective for kanji recognition, particularly when combined with other techniques:
+### Restoration-Guided Kuzushiji Recognition
 
-1.  **Radical-level RNN Encoding**: The research by [Ke & Hagiwara (2017)](https://arxiv.org/abs/1708.03312) demonstrates that **bi-directional RNN document feature encoders** combined with CNN word feature encoders achieve cost-effective kanji recognition with 90% smaller vocabulary and 13-91% fewer parameters compared to traditional character/word embedding approaches.
+**[Restoration-Guided Kuzushiji Character Recognition Framework under Seal Interference](https://arxiv.org/abs/2602.19086)** (February 2026, Ju, Yamashita, Kameko, & Mori) develops a detection-restoration-recognition pipeline for documents in which seals overlap characters.
 
-2.  **Sequential Stroke Processing**: RNNs are naturally suited for processing **stroke sequences** in handwritten kanji, as they can model the temporal dependencies between strokes. This approach aligns with how humans write kanji characters - stroke by stroke in a specific order.
+- Stage 1 detects characters and seals.
+- Stage 2 restores or removes seal interference.
+- Stage 3 classifies the restored character with a Vision Transformer-based _kuzushiji_ classifier.
+- The paper reports 98.0% precision and 93.3% recall for YOLOv12-medium on its detection test set.
+- Restoration improved Top-1 classification accuracy from 93.45% to 95.33% in an ablation study.
+- The main implication is architectural: historical OCR should be treated as a detection-restoration-recognition pipeline, not merely as a classifier applied to a clean crop.
 
-3.  **Hierarchical RNN-CNN Hybrid**: The research shows that combining CNN feature extraction with RNN sequence modeling creates an efficient hybrid architecture where:
-    - **CNN layers** extract spatial features from character images
-    - **RNN layers** process temporal or structural sequences (stroke order, radical decomposition)
-    - **Attention mechanisms** can focus on important character components
+## 6. Cross-Temporal Historical Character Recognition
 
-4.  **Memory Efficiency**: RNNs, especially **LSTM** and **GRU** variants, can process variable-length sequences while maintaining compact model sizes, making them suitable for deployment scenarios.
+### Chronicles-OCR
 
-### Stroke and Radical-Based Decomposition Methods
+**[Chronicles-OCR: A Cross-Temporal Perception Benchmark for the Evolutionary Trajectory of Chinese Characters](https://arxiv.org/abs/2605.11960)** (May 2026, Li et al.) introduces a benchmark for evaluating vision-language models across the historical evolution of Chinese writing.
 
-Recent research shows multiple approaches leveraging character structure:
+- It covers the Seven Chinese Scripts and is designed to measure visual perception across major morphological and topological shifts.
+- The benchmark contains 2,800 strictly balanced images from media ranging from tortoise shells to paper-based calligraphy.
+- Four tasks are defined: cross-period character spotting, fine-grained archaic-character recognition through visual referring, ancient-text parsing, and script classification.
+- A Stage-Adaptive Annotation Paradigm accommodates the substantial differences between historical writing stages.
+- The benchmark is designed to separate visual perception from higher-level semantic reasoning.
+- Its relevance to Kanji lies in evaluating transfer across historical glyph forms, variant shapes, and writing traditions rather than assuming that one modern glyph representation is sufficient.
 
-1. **[Radical-Structured Stroke Trees (RSST)](https://arxiv.org/abs/2211.13518)** (2022 - Yu et al.):
-   - Two-stage decomposition: Feature-to-Radical Decoder → Radical-to-Stroke Decoder
-   - Combines benefits of both radical-level and stroke-level representations
-   - Robust to distribution shifts (blurring, occlusion, zero-shot)
-   - Outperforms single-level methods with increasing distribution differences
+Chronicles-OCR should be distinguished from ordinary OCR datasets. It is not merely a larger list of character labels; it tests whether a model can recognize visual forms whose structure changes over time. This makes it particularly useful for research on historical Kanji, variant forms, epigraphy, and comparative Sino-Japanese script history.
 
-2. **[STAR: Stroke- and Radical-Level Decompositions](https://arxiv.org/abs/2210.08490)** (2022 - Zeng et al.):
-   - Combines stroke and radical information with regularization
-   - Stroke Screening Module (SSM) for deterministic cases
-   - Feature Matching Module (FMM) for confusing cases
-   - Stroke rectification scheme enlarges candidate sets
-   - State-of-the-art in both character and radical zero-shot settings
+## 7. Japanese Scene Text and Vision-Language Benchmarks
 
-3. **[Stroke-Based Autoencoders](https://arxiv.org/abs/2207.08191)** (2022 - Chen et al.):
-   - Self-supervised learning on stroke image sequences
-   - Respects canonical character writing order
-   - Predicts stroke sequences for unseen characters
-   - Enriches word embeddings with morphological features
-   - Zero-shot recognition of handwritten characters
+### JaWildText
 
-> **Implementation highlight (decomposition methods):** RSST and STAR are the most useful here if your data is **noisy or degraded** (blur, occlusion). They degrade more gracefully than monolithic CNNs because they fall back to radical/stroke structure. A practical path is to use them as a **re-ranking / disambiguation stage** on top of a HierCode shortlist, rather than as the primary classifier.
+**[JaWildText: A Benchmark for Vision-Language Models on Japanese Scene Text Understanding](https://arxiv.org/abs/2603.27942)** (March 2026, Maeda & Okazaki) addresses Japanese text in real-world images rather than only scanned documents.
 
-### Potential RNN Implementation Strategies:
+- The benchmark contains 3,241 instances from 2,961 images captured in Japan.
+- It covers 3,643 unique character types and approximately 1.12 million annotated characters.
+- It includes dense scene-text visual question answering, receipt key-information extraction, and handwriting OCR.
+- It tests mixed scripts, vertical writing, layout variation, and large Japanese character inventories.
+- Evaluation of open-weight VLMs shows that Japanese recognition remains a major bottleneck, particularly for Kanji.
+- The [JaWildText project](https://arxiv.org/abs/2603.27942) is useful for diagnosing Japanese-script failure modes, not merely ranking models.
 
-- **Stroke-based RNN**: Process kanji as sequences of strokes with coordinate information
-- **Radical-sequence RNN**: Decompose characters into radical sequences and process with bidirectional RNNs
-- **Multi-modal RNN**: Combine visual features from CNN with sequential features from RNN
-- **Attention-enhanced RNN**: Use attention mechanisms to focus on important character parts
+## 8. Large-Scale Datasets
 
-> **Implementation highlight (RNN/CNN hybrid):** Tsujimoto already ships a `KanjiRNN` baseline. The cheapest improvement is to feed it **radical or stroke sequences** (derived from a kanji decomposition table such as IDS/CHISE) instead of raw image columns, then fuse with the existing CNN features. This keeps the model small (~5–10 MB) while adding stroke-order awareness that pure CNNs lack.
+### MegaHan97K
 
-### CNN vs RNN vs Hierarchical Comparison for Kanji Recognition:
+**[MegaHan97K: A Large-Scale Dataset for Mega-Category Chinese Character Recognition with over 97K Categories](https://arxiv.org/abs/2506.04807)** (June 2025, Zhang et al.) introduces a benchmark with 97,455 Chinese-character categories.
 
-| Aspect                    | CNN Approach | RNN Approach | HierCode        | Hi-GITA           |
-| ------------------------- | ------------ | ------------ | --------------- | ----------------- |
-| **Spatial Features**      | ✅ Excellent | ❌ Limited   | ✅ Good         | ✅ Excellent      |
-| **Temporal/Sequential**   | ❌ Limited   | ✅ Excellent | Medium          | ✅ Excellent      |
-| **Zero-Shot Capability**  | ❌ No        | Medium       | ✅ Yes (strong) | ✅ Yes (stronger) |
-| **Parameter Efficiency**  | Medium       | ✅ High      | ✅ Very High    | ✅ Very High      |
-| **Stroke Order Modeling** | ❌ No        | ✅ Yes       | ✅ Implicit     | ✅ Explicit       |
-| **Deployment Size**       | ~15MB        | ~5-10MB      | ~2-3MB          | ~2-3MB            |
-| **Training Complexity**   | Medium       | Medium       | Medium          | High              |
-| **2025 Recommendation**   | Legacy       | Good         | Good            | ⭐ Best           |
+- It supports the GB18030-2022 character standard and substantially exceeds the scale of earlier public character datasets.
+- The dataset contains handwritten, historical, and synthetic subsets.
+- Its design targets long-tail recognition, where rare characters have far fewer real examples than common characters.
+- Benchmarking identifies storage demands, morphologically similar characters, and zero-shot recognition as major challenges.
+- The [official MegaHan97K repository](https://github.com/SCUT-DLVCLab/MegaHan97K) provides dataset and benchmark information.
+- For Kanji research, MegaHan97K is best treated as a transferable Han-character benchmark rather than a replacement for Japanese-specific evaluation.
 
----
+### JieZi and Ancient Character Exegesis
 
-### Traditional CNN and Deep Learning Architectures
+**[JieZi: A Large-Scale Expert-Audited Dataset and Benchmark for Ancient Chinese Character Exegesis](https://arxiv.org/abs/2608.11741)** (August 2026, Li, He, Cao, Liu, Cheng, & Jin) extends ancient-character research beyond recognition into structured scholarly interpretation.
 
-1.  **[HierCode (Hierarchical Multi-hot Encoding)](https://arxiv.org/abs/2403.13761v1):** This method proposes a novel and **lightweight hierarchical codebook** named HierCode, which uses a multi-hot encoding strategy to represent Han-based scripts (HierCode: A lightweight hierarchical codebook for zero-shot Chinese text recognition, Zhang, Zhu, Peng, et al., 2024).
-    - Traditional one-hot encoding introduces extremely large classification layers that constitute over 60% of a model's total parameters, posing a significant barrier to deployment (HierCode: A lightweight hierarchical codebook for zero-shot Chinese text recognition, Zhang, Zhu, Peng, et al., 2024).
-    - HierCode overcomes this limitation by significantly **reducing the number of parameters** in the classification layer (HierCode: A lightweight hierarchical codebook for zero-shot Chinese text recognition, Zhang, Zhu, Peng, et al., 2024).
-    - The multi-hot encoding employed results in **lower floating-point operations (FLOPs)** and a smaller overall model footprint (HierCode: A lightweight hierarchical codebook for zero-shot Chinese text recognition, Zhang, Zhu, Peng, et al., 2024).
-    - Integrating HierCode with a lightweight backbone (such as [MobileNet v3 small](https://pytorch.org/vision/stable/models/mobilenetv3.html)) can compress the total model parameters by 68.3% (HierCode: A lightweight hierarchical codebook for zero-shot Chinese text recognition, Zhang, Zhu, Peng, et al., 2024).
-    - Since Kanji are derived from Chinese characters, they share similar structures, suggesting this encoding strategy is adaptable for the Japanese language (HierCode: A lightweight hierarchical codebook for zero-shot Chinese text recognition, Zhang, Zhu, Peng, et al., 2024).
+- The paper formulates **Ancient Chinese Character Exegesis (ACCE)** as a vision-language question-answering task.
+- ACCE has four progressive levels: basic character identification, glyph-form analysis, meaning exegesis, and diachronic evolution analysis.
+- JieZi-Dataset contains more than 500,000 question-answer pairs constructed with expert-designed templates, source-text references, and human verification.
+- JieZi-Bench contains held-out reference answers curated from authoritative lexicographic works.
+- Experiments show that multimodal models perform comparatively well on basic identification but struggle with glyph analysis, semantic reasoning, and diachronic understanding.
+- Fine-tuning on JieZi-Dataset improves performance across all four levels.
+- Code and data are available through the [JieZi project link](https://arxiv.org/abs/2608.11741).
 
-2.  **[Hi-GITA (Hierarchical Multi-Granularity Image-Text Aligning)](https://arxiv.org/abs/2505.24837v1):** This 2025 approach builds on hierarchical character recognition by introducing **multi-granularity image-text alignment** across stroke-, radical-, and character-level representations (Zero-Shot Chinese Character Recognition with Hierarchical Multi-Granularity Image-Text Aligning, Zhu, Yu, Wang, Lu, Xue, & Li, 2025).
-    - It pairs an **Image Multi-Granularity Encoder** with a **Text Multi-Granularity Encoder** to capture structure at multiple semantic levels (Zhu, Yu, Wang, Lu, Xue, & Li, 2025).
-    - It introduces **Multi-Granularity Fusion Modules** and a **Fine-Grained Decoupled Image-Text Contrastive loss** to align image and text features more effectively (Zhu, Yu, Wang, Lu, Xue, & Li, 2025).
-    - The authors report that Hi-GITA **significantly outperforms existing zero-shot Chinese character recognition methods**, including roughly **20% improvement** in handwritten character and radical zero-shot settings (Zhu, Yu, Wang, Lu, Xue, & Li, 2025).
-    - Because Kanji share the same compositional properties of strokes and radicals, this method is directly relevant to **zero-shot and rare-character Kanji recognition** (Zhu, Yu, Wang, Lu, Xue, & Li, 2025).
+JieZi is not a conventional Kanji classifier. Its importance is that it provides a model for connecting recognition with philological explanation. For historical Kanji research, analogous tasks could include identifying a glyph, describing its structural form, linking it to a Japanese variant, explaining historical meaning, and tracing changes across Chinese and Japanese usage.
 
-3.  **[MegaHan97K (mega-category benchmark)](https://arxiv.org/abs/2506.04807v1):** Although primarily a dataset rather than a model, MegaHan97K matters for any architecture choice here because it stress-tests methods at **97,455 character categories** and highlights where hierarchical, zero-shot-capable encoders (HierCode, Hi-GITA) become essential at very large label sets (Zhang, Shi, Zhang, Zhao, Yang, & Jin, 2025). See [Section 11](#11-latest-datasets-for-benchmarking-2024-2025) for full dataset details.
+### Stroke-Level Handwriting Data
 
-4.  **Ensemble of CNNs:** While complex, an ensemble of three distinct Convolutional Neural Networks (CNNs) achieved high accuracy on large character sets, including Kanji ([Recognition of Handwritten Japanese Characters Using Ensemble of Convolutional Neural Networks](https://arxiv.org/abs/2306.03954), Solis, Zarkovacki, Ly, & Atyabi, 2023). The CNN-Ensemble reached 96.43% accuracy on the top 150 classes of the imbalanced Kuzushiji-Kanji dataset, and using transfer learning in one component (CNN-3) cut training time by 48% on the K-49 dataset versus training from scratch (Solis, Zarkovacki, Ly, & Atyabi, 2023).
+**[A Stroke-Level Large-Scale Database of Chinese Character Handwriting](https://arxiv.org/abs/2509.05335)** (September 2025, Xu et al.) provides stroke-level handwriting data and tools for trajectory research.
 
-## 3. Libraries and Frameworks for Deep Learning and Machine Learning
+- The database was collected from 42 writers, each writing 1,200 characters in a handwriting-to-dictation task.
+- Stroke-level data supports research on online handwriting, stroke segmentation, writer variation, and trajectory-based recognition.
+- It complements bitmap datasets because it preserves temporal writing structure.
+- The resource is relevant to Kanji systems that need to model pen movement rather than only final glyph appearance.
 
-Based on the suggested methods for recognizing handwritten Kanji characters, the following libraries and frameworks, often implemented in Python, are mentioned or implied by the sources, particularly within the context of online handwriting recognition (OHR), general deep learning for computer vision, and transformer-based models for complex text processing:
+### MCCD
 
-The core of many efficient recognition techniques relies on deep learning and machine learning models. These are predominantly implemented using widely available, Python-based toolkits:
+**[MCCD: A Multi-Attribute Chinese Calligraphy Character Dataset](https://arxiv.org/abs/2507.06948)** (2025) associates character images with style, period, and calligrapher attributes.
 
-1.  **[PyTorch](https://pytorch.org/) (Python)**: PyTorch is explicitly mentioned as the framework used for implementing and training large language models (LLMs) and transformer models.
-    - This framework is essential for building and training the **Convolutional Neural Networks (CNNs)** used in ensemble architectures ([Recognition of Handwritten Japanese Characters Using Ensemble of Convolutional Neural Networks](https://arxiv.org/abs/2306.03954), Solis, Zarkovacki, Ly, & Atyabi, 2023) and in architectures like the one proposed for HierCode.
-    - It is also used for implementing optimizers like **AdamW** (`torch.optim.AdamW`) and custom implementations of the **Lion optimizer**.
+- It supports recognition across multiple script styles and historical contexts.
+- The attributes enable experiments in writer identification, style transfer, calligraphic recognition, and character evolution.
+- Its relevance to Japanese material is indirect, but the evaluation principles apply to Kanji written in different historical and calligraphic styles.
 
-2.  **[Hugging Face Transformers](https://huggingface.co/docs/transformers/index) (Python)**: This library, built on top of PyTorch or TensorFlow, is the standard for implementing transformer models.
-    - It is used in the context of dense encoding methods for text analysis and is essential for implementing models like **[BERT-base](https://huggingface.co/docs/transformers/model_doc/bert)**, **[RoBERTa](https://huggingface.co/docs/transformers/model_doc/roberta)**, **MiniLM**, **GTE**, and **ModernBERT**.
-    - The `CrossEncoder` and [`Sentence-Transformers`](https://www.sbert.net/) models, which are relevant for text analysis related to ideographs (HierCode: A lightweight hierarchical codebook for zero-shot Chinese text recognition, Zhang, Zhu, Peng, et al., 2025) and retrieval/ranking tasks, are built upon this framework.
+## 9. Historical Text and General OCR Models
 
-3.  **[Scikit-learn](https://scikit-learn.org/stable/) (Python)**: This library, often used for classic machine learning tasks, is suitable for implementing classifiers referenced in the sources, particularly for feature-based recognition.
-    - It offers a default implementation of **TF-IDF** (Term Frequency-Inverse Document Frequency), which can be used for sparse text representations.
-    - It is suitable for implementing classifiers mentioned in the context of handwriting recognition, such as **Support Vector Machines (SVMs)** and **k-Nearest Neighbor (k-NN)**.
-    - Specifically, **Nearest Neighbor (NN) classifiers** were utilized in the framework proposed for recognizing historical Japanese characters (_kuzushiji_) by leveraging feature matching between test images and trained images ([Japanese historical character recognition by focusing on character parts](https://doi.org/10.1016/j.patcog.2023.110181), Ishikawa, Miyazaki, & Omachi, 2024).
+### CHURRO
 
-## 4. Toolkits and Systems for Handwriting and Document Recognition
+**[CHURRO: Making History Readable with an Open-Weight Large Vision-Language Model for High-Accuracy, Low-Cost Historical Text Recognition](https://arxiv.org/abs/2509.19768)** (September 2025, Semnani et al.) presents a 3-billion-parameter open-weight VLM specialized for historical text recognition.
 
-The sources identify specific toolkits designed for handling handwriting data and annotation, which are typically used within a Python environment:
+- CHURRO-DS combines 155 historical corpora, 99,491 pages, 22 centuries of textual heritage, and 46 language clusters.
+- The model reports 82.3% normalized Levenshtein similarity on printed text and 70.1% on handwritten text in its evaluation.
+- Its significance for Kanji is primarily document-level: historical recognition requires adaptation to script variation, irregular layouts, degradation, and context.
+- CHURRO should not be interpreted as a Japanese-Kanji-specific model unless Japanese results are reported separately.
 
-1.  **Lipi Toolkit (LipiTk) (Open Source)**: LipiTk is an **online Handwriting Recognition (HWR) open-source toolkit**, developed by HP Labs India.
-    - It uses open standards such as **UNIPEN** (a data exchange format for online handwriting) and its annotation for the representation of digital ink.
+### PaddleOCR-VL-1.5
 
-2.  **[Jieba](https://github.com/fxsjy/jieba) (Python)**: This library is mentioned for **word segmentation** of Chinese documents during text preprocessing, a necessary step before feature extraction or feeding text into models ([Radical-level Ideograph Encoder for RNN-based Sentiment Analysis of Chinese and Japanese](https://arxiv.org/abs/1708.03312), Ke & Hagiwara, 2017). While not directly a recognition tool, effective preprocessing is critical for achieving efficiency.
+**[PaddleOCR-VL-1.5: Towards a Multi-Task 0.9B VLM for Robust In-the-Wild Document Parsing](https://arxiv.org/abs/2601.21957)** (January 2026, revised April 2026) is a compact VLM-oriented document parser.
 
-3.  **[igraph](https://python.igraph.org/) (Python)**: The `igraph` Python package is mentioned for graph construction and projection tasks related to connectivity analysis. This could be relevant in advanced ideograph recognition systems that model relationships or structure beyond individual characters.
+- It reports 94.5% on OmniDocBench v1.5 in the paper's evaluation.
+- It adds seal recognition and text spotting to document parsing.
+- Its Real5-OmniDocBench evaluation targets scanning, skew, warping, screen photography, and illumination changes.
+- The model is relevant to Kanji document systems as a general document-level baseline, but specialized Japanese and historical evaluation remains necessary.
 
-## 5. Libraries for Implementing Specific Techniques
+### PP-OCRv6
 
-1.  **Dynamic Time Warping (DTW) and Kernels**: The concept of integrating DTW kernels with Support Vector Machines (SVMs) is discussed for handling variable-sized sequential data in online handwriting recognition ([Advances in online handwritten recognition in the last decades](https://doi.org/10.1016/j.cosrev.2022.100515), Ghosh, Sen, Obaidullah, et al., 2022). While DTW is a concept, its implementation often relies on specialized libraries, although Python implementations exist outside of the provided sources.
+**[PP-OCRv6: From 1.5M to 34.5M Parameters, Surpassing Billion-Scale VLMs on OCR Tasks](https://arxiv.org/abs/2606.13108)** (June 2026) presents OCR models for server, mobile, and edge deployment.
 
-2.  **Markov Random Field (MRF) and Hidden Markov Models (HMM)**: These statistical models, used in radical-based and hierarchical systems for Kanji and related scripts (Advances in online handwritten recognition in the last decades, Ghosh, Sen, Obaidullah, et al., 2022), are typically implemented using dedicated libraries or custom solutions within Python, though the sources do not name specific Python implementations.
+- The architecture uses a unified MetaFormer-style block with structural reparameterization.
+- Separate model tiers target different deployment budgets.
+- The paper reports an in-house recognition accuracy of 83.2% and detection Hmean of 86.2% for its medium model.
+- The tiny model is reported as 3.9 times faster than PP-OCRv5_mobile on Intel Xeon CPU.
+- These figures are in-house results, not direct Kanji benchmark results.
+- The work reinforces the value of specialized, quantized, and edge-oriented OCR rather than assuming that a large VLM is always preferable.
 
-## 6. Summary of Implementable Concepts
+## 10. Comparison of Current Approaches
 
-The most efficient methods for Kanji recognition mentioned, such as those relying on:
+| Method or resource     | Primary task                                  | Structural information                           | Rare-character value                        | Japanese relevance                                    | Deployment profile  |
+| ---------------------- | --------------------------------------------- | ------------------------------------------------ | ------------------------------------------- | ----------------------------------------------------- | ------------------- |
+| Radical-level encoding | Text and character modelling                  | Radicals/components                              | Medium                                      | Directly motivated by Chinese and Japanese ideographs | Lightweight         |
+| HierCode               | Large-vocabulary recognition                  | Hierarchical codebook                            | High                                        | Transferable, but Chinese benchmark                   | Edge-friendly       |
+| Hi-GITA                | Zero-shot character recognition               | Stroke, radical, character, image-text alignment | High                                        | Transferable structural method                        | Small-to-medium     |
+| GL-HPN                 | Zero-shot retrieval                           | Global/local image and IDS branches              | High                                        | Transferable to Kanji inventories                     | Retrieval-efficient |
+| DTRNet                 | Line recognition and fake-character detection | Text plus legal IDS/radical decoding             | High for structural validation              | Transferable to handwriting quality control           | Line-level          |
+| CNN ensemble           | Isolated handwritten recognition              | Mostly visual                                    | Low for unseen classes                      | Direct Japanese _kuzushiji_ evidence                  | Larger/slower       |
+| RG-KCR                 | Degraded _kuzushiji_ recognition              | Detection, restoration, classification           | Not primarily zero-shot                     | Direct Japanese historical evidence                   | Multi-stage         |
+| Chronicles-OCR         | Cross-temporal historical perception          | Scripts, glyph evolution, visual referring       | High for historical variants                | Indirect but highly relevant                          | Benchmark           |
+| JaWildText             | Japanese scene-text evaluation                | Mixed scripts, layout, context                   | Diagnostic                                  | Direct Japanese evidence                              | Benchmark           |
+| MegaHan97K             | Mega-category benchmarking                    | Character categories and subsets                 | Explicit zero-shot and long-tail evaluation | Transferable Han-character evidence                   | Dataset-heavy       |
+| JieZi                  | Ancient-character exegesis                    | Glyph, meaning, diachrony                        | High for expert-audited historical analysis | Transferable research framework                       | VLM/dataset         |
+| CHURRO                 | Historical document OCR                       | Document context and layout                      | Useful for rare historical text             | Indirect unless Japanese subset used                  | 3B-parameter VLM    |
+| PP-OCRv6               | General OCR                                   | Visual and document-level features               | Not primarily zero-shot                     | General multilingual relevance                        | Edge/server tiers   |
 
-- **Radical-level Ideograph Encoding** ([Radical-level Ideograph Encoder for RNN-based Sentiment Analysis of Chinese and Japanese](https://arxiv.org/abs/1708.03312), Ke & Hagiwara, 2017),
-- **Lightweight Architectures using Multi-hot Encoding (HierCode)** ([HierCode: A lightweight hierarchical codebook for zero-shot Chinese text recognition](https://arxiv.org/abs/2403.13761v1), Zhang, Zhu, Peng, et al., 2025), or
-- **CNN Ensembles** ([Recognition of Handwritten Japanese Characters Using Ensemble of Convolutional Neural Networks](https://arxiv.org/abs/2306.03954), Solis, Zarkovacki, Ly, & Atyabi, 2023),
+## 11. Recommendations for Tsujimoto
 
-all fundamentally rely on **[PyTorch](https://pytorch.org/)** and **[Hugging Face Transformers](https://huggingface.co/docs/transformers/index)** for building, training, and deploying the underlying neural networks (CNNs and RNNs) required for feature extraction and classification.
+For a project targeting approximately 3,000 Kanji classes, evaluation should include Top-1 accuracy, macro accuracy, memory, latency, and performance on rare or unseen classes.
 
-Yes, several sources explicitly point to publicly available source code, models, and associated resources, often provided via GitHub and Hugging Face.
+1. **Retain CNN and RNN baselines.** They provide controls for measuring the contribution of structural and multimodal representations.
+2. **Retain HierCode as the compact hierarchical baseline.** Its codebook formulation is valuable when the classification layer dominates model size.
+3. **Retain Hi-GITA as an existing implementation direction.** Do not list it as a newly discovered method; instead, verify its detailed numerical claims against the full paper.
+4. **Add GL-HPN-style global/local retrieval.** Its coarse-to-fine inference is a promising way to scale zero-shot candidate matching.
+5. **Add DTRNet-style structural verification.** A second decoder predicting IDS or radical structure could flag uncertain, malformed, or suspicious character predictions.
+6. **Add a degradation track.** Use synthetic blur, stains, contrast changes, seal-like overlays, and warped backgrounds, then evaluate preprocessing and recognition separately.
+7. **Add a historical-evolution track.** Chronicles-OCR suggests testing visual recognition across historical forms rather than evaluating only modern glyphs.
+8. **Add expert-audited explanation tasks.** JieZi provides a model for evaluating identification, glyph analysis, meaning, and diachronic explanation separately.
+9. **Use Japanese-specific evaluation.** JaWildText and _kuzushiji_ benchmarks expose failure modes that Chinese-character datasets cannot fully represent.
+10. **Use macro accuracy and per-class recall.** Large datasets can hide failure on rare characters behind high micro accuracy.
+11. **Benchmark edge deployment explicitly.** Record model size, RAM, CPU latency, energy use, and quantized accuracy.
+12. **Separate transfer claims from direct evidence.** Chinese-character results support architectural hypotheses for Kanji, but Japanese evaluation is required before claiming Kanji superiority.
 
-Here are the details and links mentioned in the documents:
+## 12. Updated Research Priorities
 
-## 7. Code and Models for Information Retrieval and Text Encoding
+The strongest current directions are:
 
-The research focused on comparing Lion and AdamW optimizers for Cross-Encoder reranking provides direct links to the code and trained models:
+- **Hierarchical multimodal representation:** Aligning strokes, radicals, IDS, glyphs, and holistic character images.
+- **Coarse-to-fine inference:** Retrieving a small candidate set globally and applying expensive local comparison only to that set.
+- **Dual-path structural validation:** Combining line-level transcription with independent radical or IDS verification.
+- **Long-tail and mega-category evaluation:** Testing rare and unseen characters instead of only common classes.
+- **Cross-temporal perception:** Measuring robustness across historical scripts, media, glyph variants, and morphological change.
+- **Restoration before recognition:** Treating seals, degradation, binarization, and layout as part of the recognition system.
+- **Japanese in-the-wild evaluation:** Measuring mixed scripts, vertical writing, handwriting, and real-world capture conditions.
+- **Expert-audited multimodal interpretation:** Separating basic recognition from glyph analysis, semantic interpretation, and historical explanation.
+- **Efficient specialized OCR:** Comparing small OCR systems with VLMs under realistic edge constraints.
+- **Stroke-aware learning:** Preserving digital-ink trajectories and writing order whenever online input is available.
 
-| Project / Resource                                                                                                              | Type                             |
-| :------------------------------------------------------------------------------------------------------------------------------ | :------------------------------- |
-| [**Training and Evaluation Code** (Cross-Encoder Reranking)](https://github.com/skfrost19/Cross-Encoder-Lion-vs-AdamW)          | GitHub Repository                |
-| [**Trained Models** (Cross-Encoder Reranking)](https://huggingface.co/collections/skfrost19/rerenkers-681320776cfb45e44b18f5f1) | Huggingface Model Hub Collection |
-| [**PySerini**](https://github.com/usnistgov/trec_eval) (implied via the mention of `trec eval` and the link provided for it)    | Information Retrieval Software   |
-| [**trec eval**](https://github.com/usnistgov/trec_eval)                                                                         | Evaluation Software              |
-| [**Weights & Biases (W&B)**](https://www.wandb.com/)                                                                            | Experiment Tracking Software     |
+The overall direction is not simply “larger model equals better recognition.” A practical Kanji system will likely combine a compact visual encoder, structural candidate retrieval, Japanese language or dictionary context, uncertainty estimation, and a restoration/detection front end for historical or noisy documents.
 
-## 8. Code and Models for General/Next-Generation BERT Models
+## 13. Links and Recent Papers
 
-The paper introducing NeoBERT explicitly releases its implementation to foster reproducible research:
+### Core recognition methods
 
-| Project / Resource                                                                 | Type                    |
-| :--------------------------------------------------------------------------------- | :---------------------- |
-| [**NeoBERT Checkpoints and Model**](https://huggingface.co/chandar-lab/NeoBERT)    | Hugging Face Repository |
-| [**NeoBERT Code, Data, Training Scripts**](https://github.com/chandar-lab/NeoBERT) | GitHub Repository       |
+- [HierCode: A Lightweight Hierarchical Codebook for Zero-shot Chinese Text Recognition](https://arxiv.org/abs/2403.13761v1)
+- [Zero-Shot Chinese Character Recognition with Hierarchical Multi-Granularity Image-Text Aligning (Hi-GITA)](https://arxiv.org/abs/2505.24837v1)
+- [Zero-Shot Chinese Character Recognition via Global-Local Dual-Branch Alignment and Hierarchical Inference (GL-HPN)](https://arxiv.org/abs/2605.08814)
+- [DTRNet: Dual Text-Radical Decoding for Handwritten Chinese Text Recognition with Faked Character Detection](https://arxiv.org/abs/2608.05848)
+- [Recognition of Handwritten Japanese Characters Using Ensemble of Convolutional Neural Networks](https://arxiv.org/abs/2306.16688)
 
-The research introducing a Japanese ModernBERT model also provides links to its resources:
+### Datasets and historical recognition
 
-| Project / Resource                                                                         | Type                    |
-| :----------------------------------------------------------------------------------------- | :---------------------- |
-| [**`llm-jp-modernbert-base` Model**](https://huggingface.co/llm-jp/llm-jp-modernbert-base) | Hugging Face Repository |
-| [**Training and Evaluation Code**](https://github.com/llm-jp/llm-jp-modernbert)            | GitHub Repository       |
-| [**Tokenizer Code** (Modified for the model)](https://github.com/llm-jp/llm-jp-tokenizer)  | GitHub Repository       |
+- [MegaHan97K](https://arxiv.org/abs/2506.04807)
+- [MegaHan97K GitHub repository](https://github.com/SCUT-DLVCLab/MegaHan97K)
+- [MCCD](https://arxiv.org/abs/2507.06948)
+- [A Stroke-Level Large-Scale Database of Chinese Character Handwriting](https://arxiv.org/abs/2509.05335)
+- [DKDS](https://arxiv.org/abs/2511.09117)
+- [DKDS GitHub repository](https://github.com/RuiyangJu/DKDS)
+- [Restoration-Guided Kuzushiji Character Recognition Framework under Seal Interference](https://arxiv.org/abs/2602.19086)
+- [Chronicles-OCR](https://arxiv.org/abs/2605.11960)
+- [JieZi](https://arxiv.org/abs/2608.11741)
+- [JaWildText](https://arxiv.org/abs/2603.27942)
 
-### III. Code for Online Handwriting Recognition Tools
+### Historical and general OCR systems
 
-The review on advances in online handwritten recognition lists several open-source resources and device-specific information:
+- [CHURRO](https://arxiv.org/abs/2509.19768)
+- [PaddleOCR-VL-1.5](https://arxiv.org/abs/2601.21957)
+- [PP-OCRv6](https://arxiv.org/abs/2606.13108)
+- [Hashigo: A Next Generation Sketch Interactive System for Japanese Kanji](https://arxiv.org/abs/2504.13940)
 
-| Project / Resource                                                                                         | Type                                    |
-| :--------------------------------------------------------------------------------------------------------- | :-------------------------------------- |
-| [**Lipi Toolkit (LipiTk)** Datasets/Information](http://lipitk.sourceforge.net/hpl-datasets.htm)           | Open-source HWR Toolkit (HP Labs India) |
-| [**UNIPEN** (Data Exchange Standard)](http://www.unipen.org/index.html)                                    | Standards Organization/Information      |
-| [**IAPR TC-11 Dataset** (Online Devanagari)](http://www.iapr-tc11.org)                                     | Dataset Download                        |
-| [**Assamese Handwritten Digits dataset**](https://ieee-dataport.org/documents/assamese-handwritten-digits) | IEEE Dataport                           |
+### Existing resources retained from the original document
 
-## 9. Commercial/Application-Related Links
+- [PyTorch](https://pytorch.org/)
+- [Hugging Face Transformers](https://huggingface.co/docs/transformers/index)
+- [Scikit-learn](https://scikit-learn.org/stable/)
+- [Lipi Toolkit](http://lipitk.sourceforge.net/hpl-datasets.htm)
+- [UNIPEN](http://www.unipen.org/index.html)
+- [Jieba](https://github.com/fxsjy/jieba)
+- [igraph](https://python.igraph.org/)
+- [Mathpix Digital Ink](https://mathpix.com/digital-ink)
+- [ML Kit Text Recognition](https://developers.google.com/ml-kit/vision/text-recognition)
+- [MyScript Nebo](https://www.nebo.app/)
+- [Goodnotes](https://www.goodnotes.com/)
+- [MetaMoJi](http://noteanytime.com/en/)
 
-While typically used for commercial software or models, these links reference tools that implement text and handwriting recognition capabilities:
+## 14. Scope and Evidence Notes
 
-- **[Mathpix](https://mathpix.com/digital-ink)** (Digital Ink API):
-  - [Drawing on mobile/tablet](https://mathpix.com/blog/drawing-on-mobile-tablet)
-  - [Digital Ink](https://mathpix.com/digital-ink)
-- **[ML Kit Text Recognition API](https://developers.google.com/ml-kit/vision/text-recognition)**:
-  - [Text recognition](https://developers.google.com/ml-kit/vision/text-recognition)
-- **[Read-Ink](http://www.read-ink.com/productsandsolutions.html)**:
-  - [Products and solutions](http://www.read-ink.com/productsandsolutions.html)
-- **[MyScript Nebo](https://www.nebo.app/)**:
-  - [nebo.app](https://www.nebo.app/)
-- **[MyScript Calculator](https://www.myscript.com/calculator/)**:
-  - [myscript.com/calculator](https://www.myscript.com/calculator/)
-- **[GoodNotes](https://medium.goodnotes.com/the-best-note-taking-methods-for-college-students-451f412e264e)**:
-  - [Best note-taking methods](https://medium.goodnotes.com/the-best-note-taking-methods-for-college-students-451f412e264e)
-- **[Mazec](http://product.metamoji.com/en/share/manual/what_is_mazec.php)**:
-  - [What is mazec](http://product.metamoji.com/en/share/manual/what_is_mazec.php)
-- **[Google Handwriting Input](https://support.google.com/faqs/faq/6188721?hl=en#6190439)**:
-  - [support.google.com](https://support.google.com/faqs/faq/6188721?hl=en#6190439)
-- **[Notes Plus](https://www.writeon.cool/notes-plus/)**:
-  - [writeon.cool/notes-plus](https://www.writeon.cool/notes-plus/)
-- **[WritePad for iPad](https://www.educationalappstore.com/app/writepad-for-ipad/)**:
-  - [WritePad for iPad](https://www.educationalappstore.com/app/writepad-for-ipad/)
-- **[MetaMoJi Note](http://noteanytime.com/en/)**:
-  - [noteanytime.com](http://noteanytime.com/en/)
+This document combines Japanese-specific studies with broader Chinese-character recognition research. Chinese-character methods are relevant because Kanji share Han-character structure, but transferability should be experimentally validated. Reported metrics are dataset-specific: accuracy, macro accuracy, normalized edit similarity, precision, recall, and OCR Hmean should not be compared as if they measured the same task.
 
----
-
-## 10. Comprehensive Method Comparison and Recommendations
-
-This section distills the methods above into side-by-side comparisons and a decision matrix, so you can match an approach to a concrete goal (accuracy, deployment size, robustness, or sequential input).
-
-### 2025 Method Landscape
-
-| Method                                                       | Year | Type         | Parameters     | Accuracy | Zero-Shot         | Speed   | Best For                             |
-| ------------------------------------------------------------ | ---- | ------------ | -------------- | -------- | ----------------- | ------- | ------------------------------------ |
-| **[Ensemble CNN](https://arxiv.org/abs/2306.03954)**         | 2023 | CNN          | Large          | 96.43%   | ❌ No             | Slow    | High accuracy, limited characters    |
-| **[RSST](https://arxiv.org/abs/2211.13518)**                 | 2022 | Hybrid       | Medium         | High     | ✅ Yes            | Medium  | Robustness to distribution shifts    |
-| **[STAR](https://arxiv.org/abs/2210.08490)**                 | 2022 | Hybrid       | Medium         | High     | ✅ Yes            | Medium  | Character + radical zero-shot        |
-| **[Stroke Autoencoders](https://arxiv.org/abs/2207.08191)**  | 2022 | RNN-based    | Small          | Medium   | ✅ Yes            | Medium  | Self-supervised learning             |
-| **[Sentence-level DSTFN](https://arxiv.org/abs/2108.02561)** | 2021 | RNN-CNN      | Medium         | High     | Medium            | Medium  | Sequential text recognition          |
-| **[HierCode](https://arxiv.org/abs/2403.13761v1)**           | 2024 | Hierarchical | **Very Small** | High     | ✅ Yes (strong)   | ✅ Fast | **Deployment, parameter efficiency** |
-| **[Hi-GITA](https://arxiv.org/abs/2505.24837v1)** ⭐         | 2025 | Multi-modal  | Small          | High     | ✅ Yes (stronger) | ✅ Fast | **Best overall for zero-shot**       |
-
-### Decision Matrix: Which Method to Use?
-
-**For Maximum Zero-Shot Accuracy** → **Hi-GITA (2025)**
-
-- Highest reported zero-shot accuracy (~20% gain over HierCode in handwritten/radical settings)
-- Consistent improvement in standard recognition
-- Learnable stroke-to-radical discovery
-- Most recent of the methods surveyed here
-
-**For Parameter/Deployment Efficiency** → **HierCode (2024)**
-
-- 68.3% parameter reduction
-- 2-3 MB model size
-- Fast inference (suitable for mobile)
-- Strong zero-shot performance
-- Production-ready
-
-**For Robustness to Image Degradation** → **RSST (2022)**
-
-- Best performance under blurring, occlusion, noise
-- Radical-structured stroke trees provide structure
-- Better than single-level methods under distribution shift
-- Suitable for historical/degraded documents
-
-**For Handling Sequential Input** → **DSTFN (2021)**
-
-- Designed for sentence-level recognition
-- Handles sloppy writing and missing strokes
-- Multi-layer spatial-temporal fusion
-- Best for handwritten text input
-
-**For Simplicity & Speed** → **Basic HierCode with MobileNet**
-
-- Fastest inference
-- Smallest model
-- Sufficient accuracy for most applications
-- Easy to deploy and maintain
-
-### Project-Specific Recommendation for Tsujimoto
-
-Based on the project's goals of efficient kanji character recognition with 2,965-3,036 character classes:
-
-**Primary Recommendation: Implement Hi-GITA variant**
-
-- ✅ Handles large character sets efficiently
-- ✅ Strongest reported zero-shot accuracy, valuable for rare characters
-- ✅ Learnable stroke-to-radical improves for Japanese Kanji
-- ✅ Multi-granularity alignment suits complex kanji structures
-- ✅ Most recent of the surveyed techniques (May 2025)
-- ⚠️ Slightly more parameters than HierCode but worth the improvement
-
-**Secondary Recommendation: HierCode as fallback**
-
-- ✅ Well-established method (March 2024)
-- ✅ Extremely efficient (68.3% parameter reduction)
-- ✅ Production-ready implementation likely available
-- ✅ Good starting point for deployment
-
-**Tertiary Recommendation: Hybrid RNN-CNN**
-
-- ✅ Captures sequential stroke information
-- ✅ Proven effective for Asian characters
-- ✅ Flexible architecture for experimentation
-- ✓ Already partially implemented in project
-
-### Implementation Status in Tsujimoto
-
-Based on the project structure, current implementations include:
-
-- ✅ **CNN Baseline** (LightweightKanjiNet) - 97.18% accuracy
-- ✅ **RNN Variant** (KanjiRNN) - 98.24% validation accuracy
-- ✅ **HierCode** (HierCodeClassifier) - Hierarchical encoding implemented
-- ✅ **HierCode-HiGITA** (HierCodeWithHiGITA) - 3-level hierarchical with contrastive learning
-- ✅ **ViT** (VisionTransformer) - Transformer-based approach
-- ✅ **QAT** (QuantizableLightweightKanjiNet) - Quantization-aware training
-- ✅ **4-bit Quantization** (BitsAndBytes) - Ultra-lightweight deployment
-
-**Next Step Opportunity**: Add Hi-GITA improvements to existing HierCodeWithHiGITA implementation
-
----
-
-## 11. Latest Datasets for Benchmarking (2024-2025)
-
-Dataset choice matters as much as architecture—especially at very large label sets, where zero-shot capability becomes essential. The benchmarks below are referenced from the method sections above.
-
-### MegaHan97K Dataset (June 2025)
-
-**Overview**: [MegaHan97K: A Large-Scale Dataset for Mega-Category Chinese Character Recognition](https://arxiv.org/abs/2506.04807v1)
-
-- **Unprecedented Scale**: 97,455 character categories (6x larger than previous largest dataset)
-- **Standard Compliance**: Fully supports GB18030-2022 standard (87,887 characters)
-- **Balanced Distribution**: Three subsets addressing long-tail distribution:
-  - Handwritten characters
-  - Historical characters
-  - Synthetic characters
-- **Research Challenges Identified**:
-  - Mega-category storage demands
-  - Morphologically similar character recognition
-  - Zero-shot learning difficulties
-
-**Availability**: [github.com/SCUT-DLVCLab/MegaHan97K](https://github.com/SCUT-DLVCLab/MegaHan97K)
-
-### MCCD - Multi-Attribute Chinese Calligraphy Dataset (July 2025)
-
-**Overview**: [MCCD: A Multi-Attribute Chinese Calligraphy Character Dataset](https://arxiv.org/abs/2507.06948v1)
-
-- **7,765 character categories** with 329,715 samples
-- **Rich Multi-Attribute Annotations**:
-  - 10 script styles
-  - 15 historical dynasties
-  - 142 calligraphers
-- **Research Applications**:
-  - Calligraphic character recognition
-  - Writer identification
-  - Evolution studies of characters
-- **Complexity**: Higher difficulty due to stroke complexity variations
-
-**Availability**: [github.com/SCUT-DLVCLab/MCCD](https://github.com/SCUT-DLVCLab/MCCD)
-
-### Other Important Benchmarks
-
-- **CASIA-HWDB**: Large-scale offline handwritten Chinese character dataset
-- **ICDAR Competition Datasets**: Standardized benchmarks for OCR evaluation
-- **Kuzushiji Datasets**: Historical Japanese character recognition (cursive forms) — see [Kuzushiji-MNIST/Kanji](https://github.com/rois-codh/kmnist)
-
----
-
-## 12. Critical Findings Summary
-
-### What Has Changed Since 2023:
-
-1. **Hi-GITA (May 2025)** - Revolutionary improvement in zero-shot recognition
-   - 20% accuracy improvement over HierCode
-   - Multi-modal contrastive learning
-   - Learnable stroke-to-radical assignment
-
-2. **MegaHan97K (June 2025)** - Dataset advancement
-   - First dataset with 97,455+ character categories
-   - Addresses mega-scale recognition challenges
-
-3. **Hierarchical Methods Dominating** - Clear shift away from single-level approaches
-   - Stroke-level, radical-level, character-level processing
-   - Structured representations outperform end-to-end CNNs for large vocabularies
-
-4. **Multi-Modal Learning** - Text-image alignment becoming standard
-   - Contrastive learning between visual and textual modalities
-   - Significantly improves zero-shot performance
-
-### Key Insights for Kanji Recognition:
-
-1. **Hierarchical > Monolithic**: Three-level hierarchy (Hi-GITA) > two-level (HierCode) > single-level (CNN)
-2. **Zero-Shot Critical**: For 3,000+ character sets, zero-shot capability increasingly important
-3. **Efficiency Matters**: 2-3 MB models sufficient with proper architecture
-4. **Learnable Structure**: Discovering radicals/components superior to fixed definitions
-5. **Multi-Modal Essential**: Text descriptions + images improve performance significantly
-
----
-
-## 13. Recent OCR Developments (2025–2026)
-
-These papers are not kanji-specific, but each demonstrates a technique that is directly transferable to a kanji-recognition pipeline (line-level context, robust capture, and edge deployment).
-
-### Event-Based Vision for Text Recognition
-
-**ESTR-CoT: Event Stream-based Scene Text Recognition with Chain-of-Thought Reasoning** (July 2025)
-
-- **Publication**: [arXiv:2507.02200v1](https://arxiv.org/abs/2507.02200v1)
-- **Innovation**: Combines event cameras with LLM-based reasoning for robust text recognition under challenging conditions
-- **Key Achievements**:
-  - BLEU-1 score of 0.648 (vs 0.430 for previous methods)
-  - Improved interpretability through chain-of-thought reasoning
-  - Superior performance in low illumination and fast motion scenarios
-  - Large-scale CoT dataset with 16,222 image-reasoning pairs
-- **Architecture**: EVA-CLIP (ViT-G/14) vision encoder + Vicuna-7B LLM with Q-Former alignment
-- **Advantages**: Explicitly structures inference for interpretability and accuracy
-- **Dataset**: EventSTR, WordArt*, IC15* benchmarks with reasoning annotations
-- **Code/Models**: [github.com/Event-AHU/ESTR-CoT](https://github.com/Event-AHU/ESTR-CoT)
-
-**Relevance to Kanji**: Event cameras demonstrate potential for handling complex character shapes under varied lighting conditions, applicable to handwritten Kanji with poor illumination or fast pen strokes.
-
----
-
-### Line-Level OCR: Paradigm Shift in Document Recognition
-
-**Why Stop at Words? Unveiling the Bigger Picture through Line-Level OCR** (August 2025)
-
-- **Publication**: [arXiv:2508.21693v1](https://arxiv.org/abs/2508.21693v1)
-- **Revolutionary Insight**: Progression from character → word → line-level recognition
-- **Key Metrics**:
-  - **5.4% end-to-end accuracy improvement** over word-based pipelines
-  - **4x efficiency improvement** (eliminates error-prone word detection)
-  - 97.62% Flexible Character Accuracy (FCA) on English page images
-  - 85.76% Character Recognition Rate (CRR) when combined with [Kraken](https://kraken.re/)
-- **Architecture**: Kraken (line detection) + [PARSeq](https://github.com/baudm/parseq) (line-level recognition)
-- **Advantages**:
-  - Bypasses word segmentation errors
-  - Leverages sentence-level context (critical for punctuation, ambiguous characters)
-  - Handles multi-column layouts naturally
-  - Eliminates cascading errors from detection pipeline
-- **Dataset Contribution**: 251 English page images with line-level annotations (first public dataset of this type)
-- **Code/Models**: [nishitanand.github.io/line-level-ocr-website](https://nishitanand.github.io/line-level-ocr-website)
-
-**Implications for Kanji**:
-
-- **Could enhance sentence-level recognition** of Kanji in historical documents
-- **Better punctuation handling** (critical in Japanese where punctuation varies)
-- **Improved context usage** for disambiguating similar-looking Kanji characters
-- **Efficiency gain** valuable for real-time handwritten Kanji recognition
-
----
-
-### Edge Deployment and LVLM vs Traditional OCR Comparison
-
-**E-ARMOR: Edge case Assessment and Review of Multilingual OCR** (September 2025)
-
-- **Publication**: [arXiv:2509.03615v1](https://arxiv.org/abs/2509.03615v1)
-- **Comprehensive Comparison**: 5 LVLMs vs 2 traditional OCR systems
-- **Benchmark Details**:
-  - 54 languages, doubly hand-annotated dataset
-  - Multilingual test set (English 80%+, Chinese, Japanese, Korean, Arabic, and others)
-  - Real-world edge deployment conditions
-- **Key Finding**: Traditional optimized OCR still superior for edge deployment
-  - **Sprinklr-Edge-OCR** (lightweight traditional system):
-    - F1 Score: 0.4570 (highest among all models)
-    - Inference time: 0.17 seconds/image
-    - Peak memory: 1.97 GiB
-    - Cost: $0.006 per 1,000 images
-  - **Qwen-VL** (LVLM):
-    - Precision: 0.5426 (highest precision)
-    - Inference time: 5.83 seconds/image
-    - Peak memory: 12.9 GiB
-    - Cost: $0.85 per 1,000 images
-  - **CPU-Only Deployment**: Sprinklr-Edge-OCR 15.9x faster and 12.1x less memory than Qwen-VL
-- **Evaluated Models**:
-  - LVLMs: InternVL, Qwen-VL, GOT OCR 2.0, LLaMA-3.2-11B-Vision, MiniCPM-V-2.6
-  - Traditional: Sprinklr-Edge-OCR, SuryaOCR
-- **Metric Innovation**: LLM-as-judge (Qwen-3 8B) for semantic similarity evaluation
-
-**Insights for Kanji Recognition**:
-
-- **Deployment trade-offs**: Lightweight models sufficient for production Kanji recognition
-- **Edge feasibility**: Real-time Kanji recognition achievable on resource-constrained devices
-- **Multilingual robustness**: Traditional pipelines handle diverse scripts effectively (including CJK)
-- **Cost efficiency**: Lightweight models more economical for large-scale deployment
-
----
-
-### Supporting Evidence: General OCR Improvements (2025)
-
-**General OCR Trends Observed**:
-
-1. **Line-Level Recognition** becoming standard
-   - Outperforms word-level approaches on complex documents
-   - Better language model integration through sentence context
-
-2. **LLM Integration Patterns**:
-   - Chain-of-thought reasoning improves interpretability
-   - Multi-task learning (answer + reasoning) beneficial
-   - Vision-language alignment critical for character understanding
-
-3. **Edge Deployment Evolution**:
-   - Traditional pipelines continue to excel in resource-constrained settings
-   - Quantization (4-bit, 8-bit) making LVLMs more deployable
-   - Hybrid approaches showing promise (combining strengths of both)
-
-4. **Multilingual and Multi-Script Progress**:
-   - Event cameras handling challenging lighting conditions
-   - Character-level vs line-level vs document-level trade-offs being explored
-   - CJK script recognition increasingly prioritized in benchmarks
-
----
-
-## 14. Kanji- and Japanese-Specific Recent Papers
-
-The following papers target Japanese characters directly—one for interactive learning/feedback, one for historical degraded documents.
-
-### Japanese Kanji Learning and Recognition
-
-**Hashigo: A Next Generation Sketch Interactive System for Japanese Kanji** (April 2025)
-
-- **Publication**: [arXiv:2504.13940v1](https://arxiv.org/abs/2504.13940v1)
-- **Authors**: Paul Taele, Tracy Hammond (Rice University)
-- **Focus**: Educational system for Kanji handwriting with feedback on both visual structure AND written technique
-- **Key Innovation**: Achieves human instructor-level critique on:
-  - Visual structure (character correctness)
-  - Written technique (stroke order and pressure)
-- **Application**: Addresses critical need for automated feedback on Kanji writing style to prevent bad learning habits
-- **Relevance**: Complements recognition by adding feedback component; useful for teacher-facing applications of Tsujimoto
-- **Code/Data**: GitHub repository available
-
-**Significance for Tsujimoto**: This represents recognition + feedback loop, which could inform interactive Kanji learning features.
-
----
-
-### Historical Kanji and Kuzushiji Recognition
-
-Character recognition performance depends heavily on **document condition**, not just model architecture—preprocessing and layout interference are often as important as the classifier itself in real archival materials.
-
-**DKDS: A Benchmark Dataset of Degraded Kuzushiji Documents with Seals for Detection and Binarization** (November 2025)
-
-- **Publication**: [arXiv:2511.09117v2](https://arxiv.org/abs/2511.09117v2)
-- **Authors**: Rui-Yang Ju, Kohei Yamashita, Hirotaka Kameko, Shinsuke Mori (University of Tsukuba)
-- **Focus**: Historical Japanese cursive script (kuzushiji) with document degradation
-- **Dataset Details**:
-  - First benchmark specifically for degraded historical Kuzushiji documents
-  - Includes realistic challenges: document degradation, seals/stamps, noise
-  - Created with assistance of trained Kuzushiji experts
-  - Addresses gap in existing datasets (which only focus on clean documents)
-- **Two Benchmark Tracks**:
-  1. Text and seal detection (YOLO baseline results provided)
-  2. Document binarization (GAN and cGAN baselines)
-- **Challenges Identified**:
-  - Handling document degradation (age, water damage, stains)
-  - Removing/handling seals and stamps
-  - Binarization of low-contrast historical documents
-- **Code/Models**: Dataset and implementation available at [ruiyangju.github.io/DKDS](https://ruiyangju.github.io/DKDS)
-- **Baseline Methods**: YOLO detection models, traditional binarization, GANs, conditional GANs
-
-**Relevance to Tsujimoto**:
-
-- **Historical character focus**: While Tsujimoto focuses on modern Kanji, kuzushiji techniques applicable to any historical documents
-- **Degradation handling**: Methods for binarization and preprocessing directly transferable
-- **Expert annotation**: Demonstrates importance of expert validation (similar to MegaHan97K approach)
-- **Multi-stage approach**: Detection → Binarization → Recognition pipeline structure
-- **Japanese-specific**: Uses Japanese experts, understands kuzushiji unique challenges
-
-**Potential Cross-Application**:
-
-- Could adapt binarization techniques for handwritten Kanji preprocessing
-- Seal detection could be modified for watermark/annotation removal
-- Expert validation pipeline provides model for quality assurance
-
----
-
-## 15. Project Implications for Tsujimoto
-
-### Architecture Recommendations Update (January 2026)
-
-Based on developments Aug 2025 - Jan 2026:
-
-**Current Implementation Status** ✅
-
-- HierCode: Production-ready (March 2024 approach)
-- Hi-GITA: Has more recent advances but similar architecture principles
-- RNN/CNN hybrids: Useful as baselines, consider line-level variants
-- Quantization: Validates lightweight approach for deployment
-
-**New Directions to Explore**:
-
-1. **Line-Level Recognition for Kanji**
-   - Apply PARSeq-like architecture to sentence-level Kanji recognition
-   - Leverage Japanese punctuation and grammar for context
-   - Combine with Hi-GITA's multi-modal alignment
-
-2. **Event-Camera Compatible Features**
-   - ESTR-CoT approach shows temporal reasoning valuable
-   - Consider stroke-order as temporal information
-   - Useful for handwritten Kanji with temporal stroke data
-
-3. **Hybrid Edge-Cloud Strategy**
-   - Lightweight model for edge (Sprinklr-Edge-OCR principles)
-   - Fallback to Hi-GITA for uncertain/rare characters
-   - Cost-effective for real-world deployment
-
-4. **Reasoning-Augmented Recognition**
-   - Adopt chain-of-thought for ambiguous Kanji
-   - Visual disambiguation (similar-looking characters)
-   - Semantic context from surrounding text
-
-### Approaches You Could Implement (Prioritized)
-
-A concrete, ordered roadmap that builds on what Tsujimoto already ships:
-
-| Priority | Approach                                                                                 | Effort | Why it pays off                                                                       | Starting point in repo  |
-| -------- | ---------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------- | ----------------------- |
-| 1        | **HierCode multi-hot classifier** over MobileNet v3-small                                | Low    | Largest parameter/footprint reduction; unlocks zero-shot for rare kanji               | `HierCodeClassifier`    |
-| 2        | **Stroke/radical-sequence input** for the RNN baseline                                   | Low    | Adds stroke-order awareness with minimal new parameters                               | `KanjiRNN`              |
-| 3        | **Hi-GITA learnable stroke-to-radical alignment** on top of HierCode                     | Medium | Best reported zero-shot gains; discovers radicals instead of fixing them              | `HierCodeWithHiGITA`    |
-| 4        | **RSST / STAR re-ranking stage** for noisy or confusable characters                      | Medium | Graceful degradation under blur/occlusion; improves top-1 on hard cases               | new module              |
-| 5        | **Line-level recognition** (PARSeq-style) for multi-character input                      | High   | Uses Japanese context to disambiguate similar kanji; removes word-segmentation errors | new pipeline            |
-| 6        | **Degradation preprocessing** (binarization, seal removal) for archival/historical input | Medium | Restoration quality is the main bottleneck for degraded documents                     | new preprocessing stage |
-
-**Suggested sequencing:** land items 1\u20132 as a stable, lightweight baseline; add item 3 as the accuracy upgrade; treat items 4\u20136 as targeted improvements driven by the specific data you need to support (noisy, multi-character, or historical).
-
----
-
-## 16. References
-
-### Recent Archive Papers (2024-2025)
-
-#### Chinese/Kanji Character Recognition
-
-- **[Hi-GITA](https://arxiv.org/abs/2505.24837v1)** (May 2025)
-- **[MegaHan97K](https://arxiv.org/abs/2506.04807v1)** (June 2025)
-- **[HierCode](https://arxiv.org/abs/2403.13761v1)** (March 2024)
-- **[MCCD](https://arxiv.org/abs/2507.06948v1)** (July 2025)
-
-#### General OCR and Text Recognition
-
-- **[ESTR-CoT](https://arxiv.org/abs/2507.02200v1)** (July 2025)
-- **[Line-Level OCR](https://arxiv.org/abs/2508.21693v1)** (August 2025)
-- **[E-ARMOR](https://arxiv.org/abs/2509.03615v1)** (September 2025)
-
-#### Japanese-Specific Recognition
-
-- **[Hashigo: Kanji Sketch Interactive System](https://arxiv.org/abs/2504.13940v1)** (April 2025)
-- **[DKDS: Degraded Kuzushiji Dataset](https://arxiv.org/abs/2511.09117v2)** (November 2025)
-
-### Research Papers Cited (2018-2023)
-
-- [Chinese Character Recognition with Zero-Shot Learning](https://arxiv.org/abs/1808.08993) (He & Schomaker, 2018)
-- [DenseRAN for Offline Handwritten Chinese Character Recognition](https://arxiv.org/abs/1808.04134) (Wang et al., 2018)
-- [Trajectory-based Radical Analysis Network](https://arxiv.org/abs/1801.10109) (Zhang et al., 2018)
-- [Template-Instance Loss for HCCR](https://arxiv.org/abs/1910.05545) (Xiao et al., 2019)
-- [ICDAR 2019 ReCTS Challenge](https://arxiv.org/abs/1912.09641) (Liu et al., 2019)
-- [Embedded Large-Scale Handwritten Chinese](https://arxiv.org/abs/2004.06209) (Chherawala et al., 2020)
-- [Interpretable Distance Metric Learning](https://arxiv.org/abs/2103.09714) (Dong et al., 2021)
-- [Zero-Shot with Stroke-Level Decomposition](https://arxiv.org/abs/2106.11613) (Chen et al., 2021)
-- [Sentence-level Online Handwritten Recognition](https://arxiv.org/abs/2108.02561) (Li et al., 2021)
-- [Stroke-Based Autoencoders](https://arxiv.org/abs/2207.08191) (Chen et al., 2022)
-- [Chinese Character Recognition with RSST](https://arxiv.org/abs/2211.13518) (Yu et al., 2022)
-- [STAR: Stroke- and Radical-Level](https://arxiv.org/abs/2210.08490) (Zeng et al., 2022)
-- [Zero-Shot Generation with DDPM](https://arxiv.org/abs/2305.15660) (Gui et al., 2023)
-- [Recognition with Ensemble CNN](https://arxiv.org/abs/2306.03954) (Solis et al., 2023)
+The 2026 papers cited here are recent preprints or technical reports, although DTRNet and JieZi state acceptance at ACM Multimedia 2026. Claims should still be checked against final proceedings, released code, dataset versions, and benchmark protocols before production decisions are made.

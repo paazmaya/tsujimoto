@@ -80,4 +80,3 @@ jobs:
         uses: github/codeql-action/analyze@ebcb5b36ded6beda4ceefea6a8bc4cc885255bb3 # v3.34.1
         with:
           category: "/language:python"
-
