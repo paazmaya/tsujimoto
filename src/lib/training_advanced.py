@@ -9,11 +9,11 @@ This module integrates:
 
 Example Usage:
     >>> from src.lib.training_advanced import DistributedTrainer, ExperimentTracker
-    >>> 
+    >>>
     >>> # Setup distributed training
     >>> trainer = DistributedTrainer(model, config, num_gpus=2)
     >>> trainer.train(train_loader, val_loader)
-    >>> 
+    >>>
     >>> # Track experiments
     >>> tracker = ExperimentTracker("kanji-recognition")
     >>> tracker.log_params(config.model_dump())
@@ -26,9 +26,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import pytorch_lightning as pl
 from pytorch_lightning.strategies import DDPStrategy
 
 from .lightning_trainer import LightningTrainer
@@ -96,10 +96,7 @@ class DistributedTrainer(LightningTrainer):
         """
         num_epochs = num_epochs or self.config.epochs
 
-        logger.info(
-            f"Starting distributed training "
-            f"(gpus={self.num_gpus}, nodes={self.num_nodes})"
-        )
+        logger.info(f"Starting distributed training (gpus={self.num_gpus}, nodes={self.num_nodes})")
 
         # Setup DDP strategy if distributed
         strategy = None
@@ -108,7 +105,7 @@ class DistributedTrainer(LightningTrainer):
                 find_unused_parameters=False,
                 gradient_as_bucket_view=True,
             )
-            logger.info(f"Using DDPStrategy for distributed training")
+            logger.info("Using DDPStrategy for distributed training")
 
         # Create trainer with DDP
         trainer = pl.Trainer(
@@ -306,8 +303,7 @@ class ExperimentTracker:
             "tracking_dir": str(self.tracking_dir),
             "num_params": len(self.metadata["params"]),
             "num_metrics": sum(
-                len(v) if isinstance(v, dict) else 1
-                for v in self.metadata["metrics"].values()
+                len(v) if isinstance(v, dict) else 1 for v in self.metadata["metrics"].values()
             ),
             "num_artifacts": len(self.metadata["artifacts"]),
             "models": list((self.model_dir).glob("*.pt")),
@@ -409,9 +405,7 @@ class ModelRegistry:
         Returns:
             Dictionary of model names and versions
         """
-        return {
-            name: list(data["versions"].keys()) for name, data in self.registry.items()
-        }
+        return {name: list(data["versions"].keys()) for name, data in self.registry.items()}
 
     def _save_registry(self) -> None:
         """Save registry to disk."""
@@ -437,9 +431,7 @@ def create_distributed_trainer(
     Returns:
         DistributedTrainer instance
     """
-    return DistributedTrainer(
-        model, config, num_gpus=num_gpus, model_type=model_type
-    )
+    return DistributedTrainer(model, config, num_gpus=num_gpus, model_type=model_type)
 
 
 def create_experiment_tracker(

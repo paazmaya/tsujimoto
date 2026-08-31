@@ -21,7 +21,6 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 import torch
 
@@ -48,10 +47,10 @@ def create_parser() -> argparse.ArgumentParser:
 Examples:
   Convert to ONNX:
     python convert_model.py --checkpoint model.pth --format onnx --output model.onnx
-  
+
   Convert to GGUF with quantization:
     python convert_model.py --checkpoint model.pth --format gguf --quantization q4_k --output model.gguf
-  
+
   Convert to SafeTensors with INT8 quantization:
     python convert_model.py --checkpoint model.pth --format safetensors --quantization int8
         """,
@@ -209,7 +208,7 @@ def main():
         # Load checkpoint
         checkpoint_path = args.checkpoint
         device = args.device
-        state_dict = load_checkpoint(checkpoint_path, device)
+        load_checkpoint(checkpoint_path, device)
 
         logger.info(f"Model type: {args.model_type}")
         logger.info(f"Num classes: {args.num_classes}")

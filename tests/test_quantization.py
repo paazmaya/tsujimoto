@@ -12,7 +12,6 @@ Tests for:
 
 import tempfile
 from pathlib import Path
-from typing import Tuple
 
 import pytest
 import torch

@@ -15,9 +15,7 @@ Tests verify:
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 import torch
 
 from src.lib.setup_verification import (
@@ -26,7 +24,6 @@ from src.lib.setup_verification import (
     verify_gpu_setup,
     verify_system_resources,
 )
-
 
 # ============================================================================
 # Test SetupVerifier Class
@@ -94,7 +91,7 @@ class TestDependencyVerification:
         """Test dependency verification with default packages."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_dependencies()
-        
+
         assert isinstance(results, dict)
         assert "torch" in results
         assert "numpy" in results
@@ -105,7 +102,7 @@ class TestDependencyVerification:
         """Test dependency verification with custom packages."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_dependencies(packages=["torch", "os"])
-        
+
         assert len(results) == 2
         assert "torch" in results
         # "os" is a builtin, might not be found by importlib.util.find_spec
@@ -124,7 +121,7 @@ class TestGPUVerification:
         """Test GPU setup check returns dictionary."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_gpu_setup()
-        
+
         assert isinstance(results, dict)
         assert "cuda_available" in results
 
@@ -132,7 +129,7 @@ class TestGPUVerification:
         """Test GPU setup when CUDA is available."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_gpu_setup()
-        
+
         if torch.cuda.is_available():
             assert results["cuda_available"] is True
             assert "gpu_count" in results
@@ -154,7 +151,7 @@ class TestSystemResourcesVerification:
         """Test system resources check returns dictionary."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_system_resources()
-        
+
         assert isinstance(results, dict)
         assert "disk_available_gb" in results
         assert "disk_total_gb" in results
@@ -163,7 +160,7 @@ class TestSystemResourcesVerification:
         """Test system resources have valid disk values."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_system_resources()
-        
+
         assert results["disk_available_gb"] >= 0
         assert results["disk_total_gb"] > 0
         assert results["disk_available_gb"] <= results["disk_total_gb"]
@@ -182,7 +179,7 @@ class TestDatasetStructureVerification:
         """Test dataset structure check when no dataset exists."""
         verifier = SetupVerifier(data_dir="/nonexistent", verbose=False)
         results = verifier.verify_dataset_structure()
-        
+
         assert results["dataset_found"] is False
         assert results["primary_dataset"] is None
         assert results["available_datasets"] == []
@@ -194,14 +191,14 @@ class TestDatasetStructureVerification:
             data_dir = Path(tmpdir)
             etl9g_dir = data_dir / "etl9g"
             etl9g_dir.mkdir()
-            
+
             # Create metadata
             metadata_file = data_dir / "metadata.json"
             metadata_file.write_text('{"test": "data"}')
-            
+
             verifier = SetupVerifier(data_dir=str(data_dir), verbose=False)
             results = verifier.verify_dataset_structure()
-            
+
             assert results["dataset_found"] is True
             assert results["primary_dataset"] == "etl9g"
             assert results["metadata_exists"] is True
@@ -214,10 +211,10 @@ class TestDatasetStructureVerification:
             (data_dir / "etl1").mkdir()
             (data_dir / "etl9g").mkdir()
             (data_dir / "combined_all_etl").mkdir()
-            
+
             verifier = SetupVerifier(data_dir=str(data_dir), verbose=False)
             results = verifier.verify_dataset_structure()
-            
+
             # Should pick highest priority: combined_all_etl
             assert results["primary_dataset"] == "combined_all_etl"
 
@@ -229,7 +226,7 @@ class TestETL9GVerification:
         """Test ETL9G check when directory doesn't exist."""
         verifier = SetupVerifier(data_dir="/nonexistent", verbose=False)
         results = verifier.verify_etl9g_datasets()
-        
+
         assert results["etl9g_found"] is False
         assert len(results["errors"]) > 0
 
@@ -239,22 +236,24 @@ class TestETL9GVerification:
             data_dir = Path(tmpdir)
             etl9g_dir = data_dir / "etl9g"
             etl9g_dir.mkdir()
-            
+
             # Create mock metadata and chunk_info
             metadata = {"class_1": "character_1"}
             chunk_info = {"chunks": []}
-            
+
             with open(data_dir / "metadata.json", "w") as f:
                 import json
+
                 json.dump(metadata, f)
-            
+
             with open(etl9g_dir / "chunk_info.json", "w") as f:
                 import json
+
                 json.dump(chunk_info, f)
-            
+
             verifier = SetupVerifier(data_dir=str(data_dir), verbose=False)
             results = verifier.verify_etl9g_datasets()
-            
+
             assert results["etl9g_found"] is True
             assert results["metadata_valid"] is True
             assert results["chunks_valid"] is True
@@ -267,7 +266,7 @@ class TestTrainingScriptsVerification:
         """Test training scripts check returns dictionary."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_training_scripts()
-        
+
         assert isinstance(results, dict)
         # Should have entries for each script
         assert len(results) > 0
@@ -276,7 +275,7 @@ class TestTrainingScriptsVerification:
         """Test training scripts have expected keys."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_training_scripts()
-        
+
         expected_scripts = [
             "train_cnn_model.py",
             "train_rnn.py",
@@ -286,7 +285,7 @@ class TestTrainingScriptsVerification:
             "train_radical_rnn.py",
             "train_hiercode_higita.py",
         ]
-        
+
         for script in expected_scripts:
             assert script in results
 
@@ -298,7 +297,7 @@ class TestTrainingTimeEstimation:
         """Test training time estimation returns dictionary."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.estimate_training_time()
-        
+
         assert isinstance(results, dict)
         assert len(results) > 0
 
@@ -306,15 +305,15 @@ class TestTrainingTimeEstimation:
         """Test training time estimation with custom parameters."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.estimate_training_time(num_samples=1000000, batch_size=64)
-        
+
         assert isinstance(results, dict)
 
     def test_training_time_estimates_have_reasonable_values(self):
         """Test training time estimates have reasonable string values."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.estimate_training_time()
-        
-        for key, value in results.items():
+
+        for _key, value in results.items():
             assert isinstance(value, str)
             # Should contain time units
             assert any(unit in value for unit in ["hour", "day", "second"])
@@ -327,7 +326,7 @@ class TestUnifiedCheckOrchestration:
         """Test run_all_checks returns comprehensive dictionary."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.run_all_checks(check_training_scripts=False)
-        
+
         assert isinstance(results, dict)
         assert "python_version_ok" in results
         assert "dependencies_ok" in results
@@ -339,14 +338,14 @@ class TestUnifiedCheckOrchestration:
         """Test run_all_checks with training scripts check."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.run_all_checks(check_training_scripts=True)
-        
+
         assert "training_scripts" in results
 
     def test_run_all_checks_summary(self):
         """Test run_all_checks produces summary."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.run_all_checks(check_training_scripts=False)
-        
+
         # Should have overall pass/fail
         assert "all_ok" in results
         assert isinstance(results["all_ok"], bool)
@@ -357,10 +356,10 @@ class TestUnifiedCheckOrchestration:
             data_dir = Path(tmpdir)
             etl9g_dir = data_dir / "etl9g"
             etl9g_dir.mkdir()
-            
+
             verifier = SetupVerifier(data_dir=str(data_dir), verbose=False)
             results = verifier.run_all_checks(check_training_scripts=False)
-            
+
             assert "dataset" in results
             assert results["dataset"]["dataset_found"] is True
 
@@ -376,13 +375,13 @@ class TestSetupVerifierIntegration:
     def test_full_verification_workflow(self):
         """Test complete verification workflow."""
         verifier = SetupVerifier(verbose=False)
-        
+
         # Run individual checks
         python_ok = verifier.verify_python_version()
         deps = verifier.verify_dependencies(packages=["torch"])
         gpu_info = verifier.verify_gpu_setup()
         system_info = verifier.verify_system_resources()
-        
+
         assert isinstance(python_ok, bool)
         assert isinstance(deps, dict)
         assert isinstance(gpu_info, dict)
@@ -391,17 +390,17 @@ class TestSetupVerifierIntegration:
     def test_verifier_produces_consistent_results(self):
         """Test verifier produces consistent results across calls."""
         verifier = SetupVerifier(verbose=False)
-        
+
         results1 = verifier.verify_dependencies(packages=["torch"])
         results2 = verifier.verify_dependencies(packages=["torch"])
-        
+
         assert results1 == results2
 
     def test_multiple_verifiers_independent(self):
         """Test multiple verifier instances are independent."""
         verifier1 = SetupVerifier(data_dir="data1", verbose=False)
         verifier2 = SetupVerifier(data_dir="data2", verbose=False)
-        
+
         assert verifier1.data_dir != verifier2.data_dir
         # Verify they're separate instances
         assert verifier1 is not verifier2

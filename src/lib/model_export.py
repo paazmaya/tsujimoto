@@ -15,7 +15,7 @@ Example:
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
@@ -23,15 +23,11 @@ import torch.nn as nn
 from src.lib.conversion import (
     calculate_compression_ratio,
     dequantize_state_dict,
-    format_export_filename,
     get_model_date,
     log_conversion_summary,
     quantize_model,
-    quantize_tensor_to_f16,
-    quantize_tensor_to_q4,
-    quantize_tensor_to_q8,
 )
-from src.lib.onnx import export_to_onnx, validate_onnx_model
+from src.lib.onnx import validate_onnx_model
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +130,9 @@ class ModelExporter:
                 json.dump(metadata, f, indent=2)
             logger.info(f"✓ Metadata saved: {metadata_path}")
 
-        log_conversion_summary(self.original_size, exported_size, self.model_type, "pytorch", quantization)
+        log_conversion_summary(
+            self.original_size, exported_size, self.model_type, "pytorch", quantization
+        )
 
         return str(output_path), metadata
 
@@ -203,7 +201,7 @@ class ModelExporter:
             if validate_onnx_model(str(output_path)):
                 logger.info(f"✓ ONNX export successful: {output_path}")
             else:
-                logger.warning(f"⚠ ONNX model may have validation issues")
+                logger.warning("⚠ ONNX model may have validation issues")
 
         except Exception as e:
             logger.error(f"✗ ONNX export failed: {e}")
@@ -234,7 +232,9 @@ class ModelExporter:
                 json.dump(metadata, f, indent=2)
             logger.info(f"✓ Metadata saved: {metadata_path}")
 
-        log_conversion_summary(self.original_size, exported_size, self.model_type, "onnx", "float32")
+        log_conversion_summary(
+            self.original_size, exported_size, self.model_type, "onnx", "float32"
+        )
 
         return str(output_path), metadata
 
@@ -310,7 +310,9 @@ class ModelExporter:
                 json.dump(metadata, f, indent=2)
             logger.info(f"✓ Metadata saved: {metadata_path}")
 
-        log_conversion_summary(self.original_size, exported_size, self.model_type, "safetensors", quantization)
+        log_conversion_summary(
+            self.original_size, exported_size, self.model_type, "safetensors", quantization
+        )
 
         return str(output_path), metadata
 
@@ -362,7 +364,7 @@ class ModelExporter:
 
         state_dict = export_model.state_dict()
 
-        logger.info(f"✓ Model prepared for GGUF export")
+        logger.info("✓ Model prepared for GGUF export")
         logger.info(f"  Quantization: {quantization}")
         logger.info(f"  Number of layers: {len(state_dict)}")
 
@@ -411,14 +413,16 @@ class ModelExporter:
                 json.dump(metadata, f, indent=2)
             logger.info(f"✓ Metadata saved: {metadata_path}")
 
-        log_conversion_summary(self.original_size, exported_size, self.model_type, "gguf", quantization)
+        log_conversion_summary(
+            self.original_size, exported_size, self.model_type, "gguf", quantization
+        )
 
         return str(output_path), metadata
 
     def export(
         self,
         output_path: str,
-        format: str = "pytorch",
+        export_format: str = "pytorch",
         quantization: str = "float32",
         **kwargs,
     ) -> Tuple[str, Dict]:
@@ -427,7 +431,7 @@ class ModelExporter:
 
         Args:
             output_path: Path to save model
-            format: Export format (pytorch, onnx, safetensors, gguf)
+            export_format: Export format (pytorch, onnx, safetensors, gguf)
             quantization: Quantization format specific to export format
             **kwargs: Additional format-specific arguments
 
@@ -437,18 +441,18 @@ class ModelExporter:
         Raises:
             ValueError: If format not recognized
         """
-        format = format.lower()
+        export_format = export_format.lower()
 
-        if format == "pytorch":
+        if export_format == "pytorch":
             return self.export_pytorch(output_path, quantization, **kwargs)
-        elif format == "onnx":
+        elif export_format == "onnx":
             return self.export_onnx(output_path, quantization, **kwargs)
-        elif format == "safetensors":
+        elif export_format == "safetensors":
             return self.export_safetensors(output_path, quantization, **kwargs)
-        elif format == "gguf":
+        elif export_format == "gguf":
             return self.export_gguf(output_path, quantization, **kwargs)
         else:
             raise ValueError(
-                f"Unknown export format '{format}'. "
+                f"Unknown export format '{export_format}'. "
                 f"Must be one of: {', '.join(self.SUPPORTED_FORMATS)}"
             )

@@ -44,14 +44,14 @@ class TestRNNTrainingIntegration:
     def test_basic_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
         """Test basic_rnn training for one epoch"""
         try:
-            from torch.utils.data import DataLoader
-
             from scripts.train_rnn import (
                 RNNKanjiDataset,
                 RNNTrainer,
                 collate_fn_factory,
                 create_rnn_model,
             )
+            from torch.utils.data import DataLoader
+
             from src.lib import RNNConfig
 
             x, y, num_classes = dummy_data
@@ -84,14 +84,14 @@ class TestRNNTrainingIntegration:
     def test_stroke_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
         """Test stroke_rnn training for one epoch"""
         try:
-            from torch.utils.data import DataLoader
-
             from scripts.train_rnn import (
                 RNNKanjiDataset,
                 RNNTrainer,
                 collate_fn_factory,
                 create_rnn_model,
             )
+            from torch.utils.data import DataLoader
+
             from src.lib import RNNConfig
 
             x, y, num_classes = dummy_data
@@ -121,14 +121,14 @@ class TestRNNTrainingIntegration:
     def test_simple_radical_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
         """Test simple_radical_rnn training for one epoch"""
         try:
-            from torch.utils.data import DataLoader
-
             from scripts.train_rnn import (
                 RNNKanjiDataset,
                 RNNTrainer,
                 collate_fn_factory,
                 create_rnn_model,
             )
+            from torch.utils.data import DataLoader
+
             from src.lib import RNNConfig
 
             x, y, num_classes = dummy_data
@@ -163,14 +163,14 @@ class TestRNNTrainingIntegration:
     def test_hybrid_cnn_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
         """Test hybrid_cnn_rnn training for one epoch"""
         try:
-            from torch.utils.data import DataLoader
-
             from scripts.train_rnn import (
                 RNNKanjiDataset,
                 RNNTrainer,
                 collate_fn_factory,
                 create_rnn_model,
             )
+            from torch.utils.data import DataLoader
+
             from src.lib import RNNConfig
 
             x, y, num_classes = dummy_data
@@ -200,14 +200,14 @@ class TestRNNTrainingIntegration:
     def test_linguistic_radical_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
         """Test linguistic_radical_rnn training for one epoch"""
         try:
-            from torch.utils.data import DataLoader
-
             from scripts.train_rnn import (
                 RNNKanjiDataset,
                 RNNTrainer,
                 collate_fn_factory,
                 create_rnn_model,
             )
+            from torch.utils.data import DataLoader
+
             from src.lib import RNNConfig
 
             x, y, num_classes = dummy_data
@@ -244,9 +244,8 @@ class TestRNNTrainingIntegration:
     def test_all_variants_dataset_compatibility(self, dummy_data):
         """Test that all RNN variants work with their respective datasets"""
         try:
-            from torch.utils.data import DataLoader
-
             from scripts.train_rnn import RNNKanjiDataset, collate_fn_factory
+            from torch.utils.data import DataLoader
 
             x, y, num_classes = dummy_data
 

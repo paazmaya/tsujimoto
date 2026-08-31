@@ -41,7 +41,6 @@ Functions:
 """
 
 import json
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -53,10 +52,7 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 
 from .checkpoint import CheckpointManager
-from .conversion import quantize_model
 from .logging_utils import setup_logger
-from .system import verify_and_setup_gpu
-
 
 logger = setup_logger(__name__)
 
@@ -145,8 +141,7 @@ class BaseModelTrainer(ABC):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_manager = CheckpointManager(
-            checkpoint_dir=str(self.checkpoint_dir),
-            approach_name=model_type
+            checkpoint_dir=str(self.checkpoint_dir), approach_name=model_type
         )
 
         # Loss function
@@ -180,7 +175,6 @@ class BaseModelTrainer(ABC):
             Loss function module
 
         """
-        pass
 
     def set_scheduler(self, scheduler: LRScheduler) -> None:
         """Set learning rate scheduler.
@@ -329,8 +323,7 @@ class BaseModelTrainer(ABC):
 
         """
         logger.info(
-            f"Starting training for {num_epochs} epochs on {self.device} "
-            f"(model: {self.model_type})"
+            f"Starting training for {num_epochs} epochs on {self.device} (model: {self.model_type})"
         )
 
         for epoch in range(num_epochs):
@@ -370,8 +363,7 @@ class BaseModelTrainer(ABC):
             # Early stopping
             if early_stopping and self.patience_counter >= self.patience:
                 logger.info(
-                    f"Early stopping triggered at epoch {epoch + 1} "
-                    f"(best: {self.best_epoch + 1})"
+                    f"Early stopping triggered at epoch {epoch + 1} (best: {self.best_epoch + 1})"
                 )
                 break
 
@@ -394,9 +386,13 @@ class BaseModelTrainer(ABC):
         """
         metrics = {
             "train_loss": self.history["train_loss"][-1] if self.history["train_loss"] else 0.0,
-            "train_accuracy": self.history["train_accuracy"][-1] if self.history["train_accuracy"] else 0.0,
+            "train_accuracy": self.history["train_accuracy"][-1]
+            if self.history["train_accuracy"]
+            else 0.0,
             "val_loss": self.history["val_loss"][-1] if self.history["val_loss"] else 0.0,
-            "val_accuracy": self.history["val_accuracy"][-1] if self.history["val_accuracy"] else 0.0,
+            "val_accuracy": self.history["val_accuracy"][-1]
+            if self.history["val_accuracy"]
+            else 0.0,
         }
 
         checkpoint_path = self.checkpoint_manager.save_checkpoint(
@@ -405,7 +401,7 @@ class BaseModelTrainer(ABC):
             optimizer=self.optimizer,
             scheduler=self.scheduler,
             metrics=metrics,
-            is_best=is_best
+            is_best=is_best,
         )
 
         logger.info(f"Checkpoint saved: {checkpoint_path}")
@@ -422,9 +418,9 @@ class BaseModelTrainer(ABC):
             Path(checkpoint_path),
             model=self.model,
             optimizer=self.optimizer,
-            scheduler=self.scheduler
+            scheduler=self.scheduler,
         )
-        
+
         self.current_epoch = epoch
         logger.info(f"Checkpoint loaded: {checkpoint_path}")
 
@@ -794,8 +790,7 @@ def setup_trainer_for_model(
 
     if model_type not in trainer_map:
         raise ValueError(
-            f"Unknown model type: {model_type}. "
-            f"Supported types: {list(trainer_map.keys())}"
+            f"Unknown model type: {model_type}. Supported types: {list(trainer_map.keys())}"
         )
 
     trainer_class = trainer_map[model_type]

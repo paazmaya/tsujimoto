@@ -20,7 +20,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -45,13 +44,13 @@ def create_parser() -> argparse.ArgumentParser:
 Examples:
   Analyze ONNX model:
     python analyze_model.py --model model.onnx
-  
+
   Inspect specific operations:
     python analyze_model.py --model model.onnx --inspect operations
-  
+
   Compare pooling implementations:
     python analyze_model.py --model model.onnx --inspect pooling
-  
+
   Save analysis to JSON:
     python analyze_model.py --model model.onnx --output analysis.json
         """,

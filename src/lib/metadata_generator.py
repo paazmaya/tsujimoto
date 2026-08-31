@@ -14,7 +14,7 @@ Example:
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from src.lib.logging_utils import setup_logger
 
@@ -58,9 +58,7 @@ class ChunkMetadataGenerator:
 
         # Find chunk files
         chunk_files = sorted(
-            dataset_path.glob(
-                self.CHUNK_FILENAME_PATTERN.format(dataset_name=dataset_name)
-            )
+            dataset_path.glob(self.CHUNK_FILENAME_PATTERN.format(dataset_name=dataset_name))
         )
 
         if not chunk_files:
@@ -82,9 +80,7 @@ class ChunkMetadataGenerator:
         logger.info(f"✅ Generated: {dataset_path.name}/chunk_info.json ({num_chunks} chunks)")
         return True
 
-    def generate_all(
-        self, data_dir: str = "dataset", force: bool = False
-    ) -> Dict[str, bool]:
+    def generate_all(self, data_dir: str = "dataset", force: bool = False) -> Dict[str, bool]:
         """
         Generate chunk metadata for all standard datasets.
 
@@ -132,8 +128,7 @@ class ChunkMetadataGenerator:
                 logger.info("   Your datasets are ready for training!")
             else:
                 logger.warning(
-                    "⚠️  No chunk metadata files were generated. "
-                    "No datasets with chunks found."
+                    "⚠️  No chunk metadata files were generated. No datasets with chunks found."
                 )
         else:
             logger.info(f"✅ Generated {generated_count} chunk metadata files")
@@ -192,9 +187,7 @@ class RootMetadataGenerator:
         "etl1",
     ]
 
-    def create_root_metadata(
-        self, data_dir: str = "dataset", force: bool = False
-    ) -> bool:
+    def create_root_metadata(self, data_dir: str = "dataset", force: bool = False) -> bool:
         """
         Create root-level metadata.json for training scripts.
 
@@ -315,7 +308,7 @@ class RootMetadataGenerator:
             logger.error(f"❌ Metadata missing required fields: {missing_fields}")
             return False
 
-        logger.info(f"✅ Root metadata.json is valid")
+        logger.info("✅ Root metadata.json is valid")
         logger.info(f"   Primary dataset: {metadata['primary_dataset']}")
         logger.info(f"   Classes: {metadata['num_classes']}")
         logger.info(f"   Samples: {metadata['total_samples']}")

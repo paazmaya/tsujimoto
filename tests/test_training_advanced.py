@@ -1,5 +1,5 @@
 """Tests for training_advanced module (Phase 7)."""
-import json
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -158,11 +158,6 @@ class TestExperimentTracker(unittest.TestCase):
             self.tracker.log_params({"lr": 0.001})
             self.tracker.save_metadata()
 
-            metadata_file = (
-                Path(self.tmpdir.name)
-                / "test-exp"
-                / "experiment_metadata.json"
-            )
             # File may or may not exist, just test it doesn't crash
             self.assertIsNotNone(self.tracker.metadata)
         except (TypeError, FileNotFoundError):

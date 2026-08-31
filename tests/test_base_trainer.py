@@ -14,7 +14,6 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Tuple
-from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -23,7 +22,6 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.lib.base_trainer import (
-    BaseModelTrainer,
     CNNTrainer,
     HierCodeHiGITATrainer,
     HierCodeTrainer,
@@ -32,7 +30,6 @@ from src.lib.base_trainer import (
     ViTTrainer,
     setup_trainer_for_model,
 )
-
 
 # ============================================================================
 # Fixtures and Test Models
@@ -248,7 +245,7 @@ class TestBaseTrainerInitialization:
         """Test checkpoint directory is created."""
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint_dir = f"{tmpdir}/new_checkpoints"
-            trainer = CNNTrainer(
+            CNNTrainer(
                 model=simple_model,
                 train_loader=simple_dataset,
                 val_loader=simple_dataset,
@@ -542,7 +539,9 @@ class TestQATTrainer:
             device="cpu",
         )
 
-        history = trainer.train(num_epochs=2, early_stopping=False, save_best_model=False, qat_enabled=False)
+        history = trainer.train(
+            num_epochs=2, early_stopping=False, save_best_model=False, qat_enabled=False
+        )
 
         assert len(history["train_loss"]) == 2
 

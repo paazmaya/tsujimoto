@@ -60,6 +60,12 @@ dependencies = [
   "datasets>=2.14.0",
   "typer>=0.9.0",
   "huggingface-hub>=0.21.0",
+  # Phase 5-8: Advanced training methods
+  "albumentations>=1.4.0",  # Image degradation & augmentation (Phase 3)
+  "pytorch-metric-learning>=2.3.0",  # Contrastive learning (Phase 5)
+  "ultralytics>=8.3.0",  # YOLOv8/v12 detection (Phase 6)
+  "kornia>=0.7.0",  # Advanced image transformations (Phase 3, 6)
+  "faiss-cpu>=1.8.0",  # Efficient similarity search (Phase 1)
 ]
 
 [project.optional-dependencies]

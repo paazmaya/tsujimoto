@@ -13,16 +13,16 @@ Features:
 
 Example Usage:
     >>> from src.lib.hub import HubModelManager
-    >>> 
+    >>>
     >>> manager = HubModelManager(repo_id="username/kanji-recognition")
-    >>> 
+    >>>
     >>> # Upload a model
     >>> manager.upload_model(
     ...     model_path="checkpoints/best_model.pt",
     ...     model_type="cnn",
     ...     metrics={"accuracy": 0.95}
     ... )
-    >>> 
+    >>>
     >>> # Download a model
     >>> model_path = manager.download_model(
     ...     revision="main",
@@ -40,7 +40,6 @@ from huggingface_hub import (
     model_info,
     upload_file,
 )
-import torch
 
 from .logging_utils import setup_logger
 
@@ -77,10 +76,7 @@ class HubModelManager:
         self.private = private
         self.api = HfApi()
 
-        logger.info(
-            f"HubModelManager initialized for {repo_id} "
-            f"(private={private})"
-        )
+        logger.info(f"HubModelManager initialized for {repo_id} (private={private})")
 
     def create_repo(
         self,
@@ -178,10 +174,7 @@ class HubModelManager:
         Returns:
             Path to downloaded model file
         """
-        logger.info(
-            f"Downloading {filename} from {self.repo_id} "
-            f"(revision={revision})"
-        )
+        logger.info(f"Downloading {filename} from {self.repo_id} (revision={revision})")
 
         try:
             from huggingface_hub import hf_hub_download
@@ -221,7 +214,7 @@ class HubModelManager:
                 "siblings": len(info.siblings) if info.siblings else 0,
             }
 
-            logger.info(f"✓ Model info fetched")
+            logger.info("✓ Model info fetched")
             return metadata
 
         except Exception as e:
@@ -243,7 +236,7 @@ class HubModelManager:
                 token=self.token,
             )
 
-            logger.info(f"✓ Repository deleted")
+            logger.info("✓ Repository deleted")
             return True
 
         except Exception as e:
@@ -322,7 +315,7 @@ MIT
 
 """
 
-        logger.info(f"✓ Model card generated")
+        logger.info("✓ Model card generated")
         return model_card
 
     def push_model_card(self, content: str):

@@ -29,7 +29,6 @@ class TestTrainCNNModel:
         """Test ETL9GDataset can be initialized with data."""
         try:
             import numpy as np
-
             from scripts.train_cnn_model import ETL9GDataset
 
             X = np.random.rand(10, 64, 64).astype(np.float32)  # noqa: N806
@@ -45,7 +44,6 @@ class TestTrainCNNModel:
         """Test ETL9GDataset __getitem__ method."""
         try:
             import numpy as np
-
             from scripts.train_cnn_model import ETL9GDataset
 
             X = np.random.rand(5, 64, 64).astype(np.float32)  # noqa: N806
@@ -201,6 +199,7 @@ class TestGenerateMapping:
     def test_jis_to_unicode_hiragana(self):
         """Test hiragana conversion from JIS."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.jis_to_unicode("2421")
         assert isinstance(result, str)
@@ -209,6 +208,7 @@ class TestGenerateMapping:
     def test_jis_to_unicode_katakana(self):
         """Test katakana conversion from JIS."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.jis_to_unicode("2521")
         assert isinstance(result, str)
@@ -217,6 +217,7 @@ class TestGenerateMapping:
     def test_jis_to_unicode_kanji(self):
         """Test kanji conversion from JIS."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.jis_to_unicode("3021")
         assert isinstance(result, str)
@@ -225,6 +226,7 @@ class TestGenerateMapping:
     def test_jis_to_unicode_invalid(self):
         """Test invalid JIS code handling."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.jis_to_unicode("ZZZZ")
         assert isinstance(result, str)
@@ -234,6 +236,7 @@ class TestGenerateMapping:
     def test_estimate_stroke_count_single_char(self):
         """Test stroke count for single character."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.estimate_stroke_count("a")
         assert isinstance(result, int)
@@ -242,6 +245,7 @@ class TestGenerateMapping:
     def test_estimate_stroke_count_hiragana(self):
         """Test stroke count for hiragana."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.estimate_stroke_count("あ")
         assert isinstance(result, int)
@@ -250,6 +254,7 @@ class TestGenerateMapping:
     def test_estimate_stroke_count_kanji(self):
         """Test stroke count for kanji."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.estimate_stroke_count("漢")
         assert isinstance(result, int)
@@ -258,6 +263,7 @@ class TestGenerateMapping:
     def test_estimate_stroke_count_empty(self):
         """Test stroke count for empty string."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.estimate_stroke_count("")
         assert isinstance(result, int)
@@ -265,6 +271,7 @@ class TestGenerateMapping:
     def test_estimate_stroke_count_multi_char(self):
         """Test stroke count for multi-character string."""
         from src.lib.character_mapping import JISConverter
+
         converter = JISConverter()
         result = converter.estimate_stroke_count("abc")
         assert isinstance(result, int)

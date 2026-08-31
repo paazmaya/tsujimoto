@@ -35,7 +35,6 @@ Functions:
 
 import importlib.util
 import json
-import logging
 import os
 import shutil
 import sys
@@ -91,7 +90,9 @@ class SetupVerifier:
 
         """
         if version_info >= min_version:
-            msg = f"✓ Python version: {version_info.major}.{version_info.minor}.{version_info.micro}"
+            msg = (
+                f"✓ Python version: {version_info.major}.{version_info.minor}.{version_info.micro}"
+            )
             logger.info(msg) if self.verbose else None
             return True
         else:
@@ -111,15 +112,15 @@ class SetupVerifier:
         )
 
         if in_venv:
-            logger.info(f"✓ Running in virtual environment: {os.environ.get('VIRTUAL_ENV', 'unknown')}")
+            logger.info(
+                f"✓ Running in virtual environment: {os.environ.get('VIRTUAL_ENV', 'unknown')}"
+            )
             return True
         else:
             logger.warning("⚠ Not running in virtual environment (recommended)")
             return False
 
-    def verify_dependencies(
-        self, packages: Optional[List[str]] = None
-    ) -> Dict[str, bool]:
+    def verify_dependencies(self, packages: Optional[List[str]] = None) -> Dict[str, bool]:
         """Verify required packages are installed.
 
         Args:
@@ -231,7 +232,7 @@ class SetupVerifier:
         results: Dict[str, float] = {}
 
         # RAM check
-        ram_total_bytes = os.popen("vm_stat | grep 'Pages free' | awk '{print $3}'").read()
+        ram_total_bytes = os.popen("vm_stat | grep 'Pages free' | awk '{print $3}'").read()  # noqa: S605, S607
         ram_available_gb = float(ram_total_bytes.strip()) / 1024 / 1024 if ram_total_bytes else 0
         ram_total_gb = shutil.disk_usage("/").total / 1e9 / 1000  # Approximation
 
@@ -369,7 +370,7 @@ class SetupVerifier:
                     metadata = json.load(f)
                 results["metadata_valid"] = True
                 logger.info(f"✓ Metadata valid: {len(metadata)} entries")
-            except (json.JSONDecodeError, IOError) as e:
+            except (OSError, json.JSONDecodeError) as e:
                 results["errors"].append(f"Metadata invalid: {str(e)}")
         else:
             results["errors"].append("metadata.json not found")
@@ -393,7 +394,7 @@ class SetupVerifier:
                     logger.info(f"✓ All {len(chunk_info.get('chunks', []))} chunks present")
                 else:
                     results["errors"].append(f"Missing chunks: {missing_chunks}")
-            except (json.JSONDecodeError, IOError) as e:
+            except (OSError, json.JSONDecodeError) as e:
                 results["errors"].append(f"chunk_info.json invalid: {str(e)}")
         else:
             results["errors"].append("chunk_info.json not found")
@@ -476,19 +477,25 @@ class SetupVerifier:
                 samples_per_sec = 5000 * gpu_count
                 hours_per_epoch = (num_samples / batch_size) / (samples_per_sec / 60 / 60)
                 estimates["per_epoch_gpu"] = f"{hours_per_epoch:.1f} hours"
-                estimates["100_epochs_gpu"] = f"{hours_per_epoch * 100:.0f} hours ({hours_per_epoch * 100 / 24:.1f} days)"
+                estimates["100_epochs_gpu"] = (
+                    f"{hours_per_epoch * 100:.0f} hours ({hours_per_epoch * 100 / 24:.1f} days)"
+                )
             else:
                 # Assume ~2000 samples/sec on modest GPU
                 samples_per_sec = 2000
                 hours_per_epoch = (num_samples / batch_size) / (samples_per_sec / 60 / 60)
                 estimates["per_epoch_gpu"] = f"{hours_per_epoch:.1f} hours"
-                estimates["100_epochs_gpu"] = f"{hours_per_epoch * 100:.0f} hours ({hours_per_epoch * 100 / 24:.1f} days)"
+                estimates["100_epochs_gpu"] = (
+                    f"{hours_per_epoch * 100:.0f} hours ({hours_per_epoch * 100 / 24:.1f} days)"
+                )
         else:
             # Assume ~100 samples/sec on CPU
             samples_per_sec = 100
             hours_per_epoch = (num_samples / batch_size) / (samples_per_sec / 60 / 60)
             estimates["per_epoch_cpu"] = f"{hours_per_epoch:.1f} hours"
-            estimates["100_epochs_cpu"] = f"{hours_per_epoch * 100:.0f} hours ({hours_per_epoch * 100 / 24:.1f} days)"
+            estimates["100_epochs_cpu"] = (
+                f"{hours_per_epoch * 100:.0f} hours ({hours_per_epoch * 100 / 24:.1f} days)"
+            )
 
         return estimates
 
@@ -551,11 +558,13 @@ class SetupVerifier:
             logger.info(f"  {key}: {value}")
 
         # Summary
-        all_results["all_ok"] = all([
-            all_results["python_version_ok"],
-            all_results["dependencies_ok"],
-            all_results.get("dataset_ok", False),
-        ])
+        all_results["all_ok"] = all(
+            [
+                all_results["python_version_ok"],
+                all_results["dependencies_ok"],
+                all_results.get("dataset_ok", False),
+            ]
+        )
 
         logger.info("\n" + "=" * 70)
         if all_results["all_ok"]:

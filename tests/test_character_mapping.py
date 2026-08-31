@@ -12,7 +12,6 @@ Tests for:
 import json
 import tempfile
 from pathlib import Path
-from typing import Dict
 
 import pytest
 
@@ -214,7 +213,7 @@ class TestCharacterMappingGenerator:
             assert "statistics" in mapping
 
             # Check character entries have stroke info
-            for class_idx, char_info in mapping["characters"].items():
+            for _class_idx, char_info in mapping["characters"].items():
                 assert "character" in char_info
                 assert "stroke_count" in char_info
                 assert "type" in char_info
@@ -232,7 +231,7 @@ class TestCharacterMappingGenerator:
                 json.dump(sample_metadata, f)
 
             output_dir = Path(tmpdir) / "output"
-            mapping = generator.generate_with_stroke_info(metadata_file, output_path=output_dir)
+            generator.generate_with_stroke_info(metadata_file, output_path=output_dir)
 
             # Check output file
             output_file = output_dir / "character_mapping_with_strokes.json"
@@ -271,7 +270,6 @@ class TestCompleteMapping:
         """Test structure of complete mapping."""
         # This is a basic structural test that doesn't require actual data
         # More thorough testing would need actual dataset files
-        pass
 
 
 class TestIntegration:
@@ -298,7 +296,7 @@ class TestIntegration:
             output_dir = Path(tmpdir) / "output"
 
             # Generate mappings with stroke info
-            mapping = generator.generate_with_stroke_info(metadata_file, output_path=output_dir)
+            generator.generate_with_stroke_info(metadata_file, output_path=output_dir)
 
             # Verify all output files exist
             assert (output_dir / "character_mapping_with_strokes.json").exists()

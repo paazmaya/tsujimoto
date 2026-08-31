@@ -21,7 +21,6 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,13 +45,13 @@ def create_parser() -> argparse.ArgumentParser:
 Examples:
   Run all checks:
     python verify_setup.py
-  
+
   Check only environment:
     python verify_setup.py --check environment
-  
+
   Check dataset with custom data directory:
     python verify_setup.py --check dataset --data-dir ./data
-  
+
   Check ETL9G specific validation:
     python verify_setup.py --check etl9g --data-dir ./data
         """,
@@ -126,9 +125,7 @@ def run_checks(args) -> bool:
 
     if check == "all":
         logger.info("Running all verification checks...")
-        results = verifier.run_all_checks(
-            check_training_scripts=args.include_training_scripts
-        )
+        results = verifier.run_all_checks(check_training_scripts=args.include_training_scripts)
         all_passed = results.get("all_ok", False)
 
     elif check == "environment":
@@ -150,9 +147,7 @@ def run_checks(args) -> bool:
     elif check == "system":
         logger.info("Checking system resources...")
         system_info = verifier.verify_system_resources()
-        all_passed = (
-            system_info.get("disk_available_gb", 0) > 0
-        )
+        all_passed = system_info.get("disk_available_gb", 0) > 0
 
     elif check == "dataset":
         logger.info("Checking dataset structure...")

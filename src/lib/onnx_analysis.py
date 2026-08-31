@@ -14,15 +14,16 @@ Example:
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 try:
-    import onnx
-    from onnx import helper
+    import importlib.util
 
-    ONNX_AVAILABLE = True
+    import onnx
+
+    ONNX_AVAILABLE = importlib.util.find_spec("onnx") is not None
 except ImportError:
     ONNX_AVAILABLE = False
     logger.warning("ONNX not available. Install with: pip install onnx")
@@ -89,7 +90,7 @@ class ONNXModelAnalyzer:
             "operations": self._analyze_operations(),
         }
 
-        logger.info(f"✓ Model analysis complete")
+        logger.info("✓ Model analysis complete")
         logger.info(f"  IR Version: {self.info['ir_version']}")
         logger.info(f"  Opset Version: {self.info['opset_version']}")
         logger.info(f"  Inputs: {len(self.info['inputs'])}")
@@ -105,22 +106,26 @@ class ONNXModelAnalyzer:
             for opset in self.model.opset_import:
                 if opset.domain == "" or opset.domain == "ai.onnx":
                     return opset.version
-        except Exception:
-            pass
+        except Exception as e:  # noqa: S110
+            logger.debug(f"Could not get opset version: {e}")
         return None
 
     def _analyze_inputs(self) -> List[Dict]:
         """Analyze model inputs."""
         inputs = []
         for inp in self.graph.input:
-            shape = [d.dim_value if d.dim_value > 0 else "?" for d in inp.type.tensor_type.shape.dim]
+            shape = [
+                d.dim_value if d.dim_value > 0 else "?" for d in inp.type.tensor_type.shape.dim
+            ]
             dtype = self._get_tensor_type_name(inp.type.tensor_type.elem_type)
 
-            inputs.append({
-                "name": inp.name,
-                "shape": shape,
-                "dtype": dtype,
-            })
+            inputs.append(
+                {
+                    "name": inp.name,
+                    "shape": shape,
+                    "dtype": dtype,
+                }
+            )
 
         logger.info(f"  Inputs: {len(inputs)}")
         for inp in inputs:
@@ -132,14 +137,18 @@ class ONNXModelAnalyzer:
         """Analyze model outputs."""
         outputs = []
         for out in self.graph.output:
-            shape = [d.dim_value if d.dim_value > 0 else "?" for d in out.type.tensor_type.shape.dim]
+            shape = [
+                d.dim_value if d.dim_value > 0 else "?" for d in out.type.tensor_type.shape.dim
+            ]
             dtype = self._get_tensor_type_name(out.type.tensor_type.elem_type)
 
-            outputs.append({
-                "name": out.name,
-                "shape": shape,
-                "dtype": dtype,
-            })
+            outputs.append(
+                {
+                    "name": out.name,
+                    "shape": shape,
+                    "dtype": dtype,
+                }
+            )
 
         logger.info(f"  Outputs: {len(outputs)}")
         for out in outputs:
@@ -156,12 +165,14 @@ class ONNXModelAnalyzer:
             op_type = node.op_type
             if op_type not in nodes_by_type:
                 nodes_by_type[op_type] = []
-            nodes_by_type[op_type].append({
-                "name": node.name,
-                "op_type": op_type,
-                "inputs": list(node.input),
-                "outputs": list(node.output),
-            })
+            nodes_by_type[op_type].append(
+                {
+                    "name": node.name,
+                    "op_type": op_type,
+                    "inputs": list(node.input),
+                    "outputs": list(node.output),
+                }
+            )
 
         logger.info(f"  Nodes: {total_nodes}")
         for op_type, nodes in sorted(nodes_by_type.items()):
@@ -256,23 +267,23 @@ class ONNXModelAnalyzer:
         if not self.info:
             self.analyze()
 
-        print("\n" + "=" * 70)
-        print("ONNX MODEL SUMMARY")
-        print("=" * 70)
-        print(f"Model Path: {self.info['model_path']}")
-        print(f"IR Version: {self.info['ir_version']}")
-        print(f"Opset Version: {self.info['opset_version']}")
-        print(f"Producer: {self.info['producer_name']}")
-        print(f"\nInputs: {len(self.info['inputs'])}")
-        for inp in self.info['inputs']:
-            print(f"  - {inp['name']}: {inp['shape']} ({inp['dtype']})")
-        print(f"\nOutputs: {len(self.info['outputs'])}")
-        for out in self.info['outputs']:
-            print(f"  - {out['name']}: {out['shape']} ({out['dtype']})")
-        print(f"\nNodes: {self.info['nodes']['count']}")
-        print(f"Parameters: {self.info['initializers']['total_params']:,}")
-        print(f"Unique Operations: {self.info['operations']['count']}")
-        print("=" * 70 + "\n")
+        logger.info("\n" + "=" * 70)
+        logger.info("ONNX MODEL SUMMARY")
+        logger.info("=" * 70)
+        logger.info(f"Model Path: {self.info['model_path']}")
+        logger.info(f"IR Version: {self.info['ir_version']}")
+        logger.info(f"Opset Version: {self.info['opset_version']}")
+        logger.info(f"Producer: {self.info['producer_name']}")
+        logger.info(f"\nInputs: {len(self.info['inputs'])}")
+        for inp in self.info["inputs"]:
+            logger.info(f"  - {inp['name']}: {inp['shape']} ({inp['dtype']})")
+        logger.info(f"\nOutputs: {len(self.info['outputs'])}")
+        for out in self.info["outputs"]:
+            logger.info(f"  - {out['name']}: {out['shape']} ({out['dtype']})")
+        logger.info(f"\nNodes: {self.info['nodes']['count']}")
+        logger.info(f"Parameters: {self.info['initializers']['total_params']:,}")
+        logger.info(f"Unique Operations: {self.info['operations']['count']}")
+        logger.info("=" * 70 + "\n")
 
     def save_analysis(self, output_path: str) -> None:
         """

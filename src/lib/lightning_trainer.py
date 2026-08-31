@@ -12,7 +12,7 @@ Example Usage:
     >>> from src.lib.lightning_trainer import LightningTrainer
     >>> from src.lib.config import CNNConfig
     >>> from models import LightweightCNNKanji
-    >>> 
+    >>>
     >>> config = CNNConfig(epochs=50)
     >>> model = LightweightCNNKanji(num_classes=config.num_classes)
     >>> trainer = LightningTrainer(model, config, checkpoint_dir='checkpoints/cnn')
@@ -23,9 +23,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from pytorch_lightning.loggers import TensorBoardLogger
 import torch
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 
 from .config import OptimizationConfig
@@ -119,7 +119,7 @@ class LightningTrainer:
         """
         num_epochs = num_epochs or self.config.epochs
 
-        logger.info(f"Starting training with Lightning Trainer")
+        logger.info("Starting training with Lightning Trainer")
         logger.info(f"  Epochs: {num_epochs}")
         logger.info(f"  Checkpoint dir: {self.checkpoint_dir}")
 
@@ -174,8 +174,7 @@ class LightningTrainer:
             self.best_epoch = checkpoint_callback.best_epoch
 
             logger.info(
-                f"Best model at epoch {self.best_epoch}: "
-                f"val_accuracy={self.best_val_accuracy:.4f}"
+                f"Best model at epoch {self.best_epoch}: val_accuracy={self.best_val_accuracy:.4f}"
             )
 
         return self.history
@@ -200,9 +199,7 @@ class LightningTrainer:
             state_dict = checkpoint["state_dict"]
             # Remove 'model.' prefix added by Lightning
             state_dict = {
-                k.replace("model.", ""): v
-                for k, v in state_dict.items()
-                if k.startswith("model.")
+                k.replace("model.", ""): v for k, v in state_dict.items() if k.startswith("model.")
             }
             self.model.load_state_dict(state_dict)
         else:

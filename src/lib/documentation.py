@@ -9,11 +9,11 @@ This module provides tools for:
 
 Example Usage:
     >>> from src.lib.documentation import DocumentationGenerator, ModelCardGenerator
-    >>> 
+    >>>
     >>> # Generate API docs
     >>> gen = DocumentationGenerator("docs/api")
     >>> gen.generate_api_docs()
-    >>> 
+    >>>
     >>> # Generate model card
     >>> card_gen = ModelCardGenerator("CNN", config)
     >>> card = card_gen.generate()

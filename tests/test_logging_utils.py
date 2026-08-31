@@ -4,8 +4,6 @@
 import tempfile
 from pathlib import Path
 
-from loguru import logger as loguru_logger
-
 from src.lib.logging_utils import setup_logger, suppress_warnings
 
 
@@ -74,7 +72,7 @@ class TestSetupLogger:
 
         logger1 = setup_logger(logger_name)
         logger2 = setup_logger(logger_name)
-        
+
         # Both should be loguru logger instances
         assert logger1 is not None
         assert logger2 is not None
@@ -103,10 +101,10 @@ class TestSetupLogger:
 
             # Log to both file and console
             logger.info("Test message")
-            
+
             # File should exist
             assert log_file.exists()
-            
+
             # File should have content
             with open(log_file) as f:
                 content = f.read()
@@ -127,7 +125,7 @@ class TestLoggerIntegration:
             logger.info("Info message")
             logger.warning("Warning message")
             logger.error("Error message")
-            
+
             with open(log_file) as f:
                 content = f.read()
                 assert "Info message" in content
@@ -142,7 +140,7 @@ class TestLoggerIntegration:
 
             logger.info("Processing {} items", 42)
             logger.info("Status: {}", "complete")
-            
+
             with open(log_file) as f:
                 content = f.read()
                 assert "Processing 42 items" in content
@@ -186,4 +184,3 @@ class TestSuppressWarnings:
             success = False
             raise e
         assert success
-

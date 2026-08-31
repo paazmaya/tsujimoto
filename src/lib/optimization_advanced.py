@@ -9,22 +9,22 @@ This module provides tools for optimizing models for deployment:
 
 Example Usage:
     >>> from src.lib.optimization_advanced import ModelOptimizer
-    >>> 
+    >>>
     >>> optimizer = ModelOptimizer(model, device='cuda')
-    >>> 
+    >>>
     >>> # Export to ONNX with optimization
     >>> optimizer.export_onnx(
     ...     output_path="model.onnx",
     ...     input_shape=(1, 3, 64, 64),
     ...     optimize=True
     ... )
-    >>> 
+    >>>
     >>> # Quantize the model
     >>> quantized_model = optimizer.quantize(
     ...     method="dynamic",
     ...     backend="qnnpack"
     ... )
-    >>> 
+    >>>
     >>> # Prune the model
     >>> pruned_model = optimizer.prune(
     ...     amount=0.2,  # 20% sparsity
@@ -114,11 +114,13 @@ class ModelOptimizer:
                 dynamic_axes={
                     "input": {0: "batch_size"},
                     "output": {0: "batch_size"},
-                } if optimize else None,
+                }
+                if optimize
+                else None,
                 verbose=False,
             )
 
-            logger.info(f"✓ ONNX export successful")
+            logger.info("✓ ONNX export successful")
 
             # Optionally simplify with onnxsimplifier
             if simplify:
@@ -131,10 +133,7 @@ class ModelOptimizer:
                     import onnx
 
                     onnx.save(model_opt, str(simplified_path))
-                    logger.info(
-                        f"✓ ONNX simplified: {simplified_path} "
-                        f"(check_ok={check_ok})"
-                    )
+                    logger.info(f"✓ ONNX simplified: {simplified_path} (check_ok={check_ok})")
 
                 except ImportError:
                     logger.warning("onnxsimplifier not installed, skipping simplification")
@@ -231,8 +230,7 @@ class ModelOptimizer:
             Pruned model
         """
         logger.info(
-            f"Pruning model (amount={amount}, method={method}, "
-            f"layers={layer_names or 'all'})"
+            f"Pruning model (amount={amount}, method={method}, layers={layer_names or 'all'})"
         )
 
         try:
@@ -253,13 +251,11 @@ class ModelOptimizer:
     def _get_layers_to_prune(self, layer_names: Optional[list]) -> list:
         """Get list of layers to prune."""
         if layer_names:
-            return [
-                (self.model, name) for name in layer_names if hasattr(self.model, name)
-            ]
+            return [(self.model, name) for name in layer_names if hasattr(self.model, name)]
 
         # Default: all Linear and Conv layers
         layers = []
-        for name, module in self.model.named_modules():
+        for _name, module in self.model.named_modules():
             if isinstance(module, (nn.Linear, nn.Conv2d, nn.Conv1d)):
                 layers.append((module, "weight"))
 
@@ -301,7 +297,7 @@ class ModelOptimizer:
 
         # Count pruned parameters
         pruned_params = 0
-        for name, param in self.model.named_parameters():
+        for _name, param in self.model.named_parameters():
             if hasattr(param, "data_mask"):
                 pruned_params += (param.data_mask == 0).sum().item()
 
@@ -365,8 +361,7 @@ class ModelOptimizer:
         }
 
         logger.info(
-            f"✓ Benchmark complete: {latency_ms:.2f}ms latency, "
-            f"{throughput:.1f} samples/sec"
+            f"✓ Benchmark complete: {latency_ms:.2f}ms latency, {throughput:.1f} samples/sec"
         )
 
         return stats

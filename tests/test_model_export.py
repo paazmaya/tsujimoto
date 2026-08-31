@@ -13,7 +13,6 @@ Tests for:
 import json
 import tempfile
 from pathlib import Path
-from typing import Tuple
 
 import pytest
 import torch
@@ -78,7 +77,9 @@ class TestModelExporter:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.pth"
 
-            result_path, metadata = exporter.export_pytorch(str(output_path), quantization="float32")
+            result_path, metadata = exporter.export_pytorch(
+                str(output_path), quantization="float32"
+            )
 
             # Verify file was created
             assert Path(result_path).exists()
@@ -103,7 +104,9 @@ class TestModelExporter:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model_bf16.pth"
 
-            result_path, metadata = exporter.export_pytorch(str(output_path), quantization="bfloat16")
+            result_path, metadata = exporter.export_pytorch(
+                str(output_path), quantization="bfloat16"
+            )
 
             # Verify file was created
             assert Path(result_path).exists()
@@ -122,7 +125,7 @@ class TestModelExporter:
             assert metadata_path.exists()
 
             # Verify metadata content
-            with open(metadata_path, "r", encoding="utf-8") as f:
+            with open(metadata_path, encoding="utf-8") as f:
                 saved_metadata = json.load(f)
 
             assert saved_metadata["model_type"] == "test_model"
@@ -213,7 +216,7 @@ class TestModelExporter:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Test PyTorch export through unified interface
             output_path = Path(tmpdir) / "model.pth"
-            result_path, metadata = exporter.export(str(output_path), format="pytorch")
+            result_path, metadata = exporter.export(str(output_path), export_format="pytorch")
 
             assert Path(result_path).exists()
             assert metadata["model_type"] == "test_model"
@@ -224,7 +227,7 @@ class TestModelExporter:
             output_path = Path(tmpdir) / "model.unknown"
 
             with pytest.raises(ValueError):
-                exporter.export(str(output_path), format="invalid_format")
+                exporter.export(str(output_path), export_format="invalid_format")
 
     def test_export_metadata_completeness(self, exporter):
         """Test that exported metadata contains all required fields."""
@@ -315,7 +318,7 @@ class TestModelExportIntegration:
             for fmt in formats:
                 output_path = Path(tmpdir) / f"model.{fmt}"
                 try:
-                    result_path, metadata = exporter.export(str(output_path), format=fmt)
+                    result_path, metadata = exporter.export(str(output_path), export_format=fmt)
                     assert Path(result_path).exists()
                 except ImportError:
                     pytest.skip(f"{fmt} format not available")

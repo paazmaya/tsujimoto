@@ -14,7 +14,6 @@ Example:
 """
 
 import json
-import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -260,9 +259,7 @@ class CharacterMappingGenerator:
         _, y = load_chunked_dataset(f"{data_dir}/combined_all_etl")
 
         unique_classes = np.unique(y)
-        logger.info(
-            f"✓ Loaded {len(y):,} samples with {len(unique_classes):,} unique classes"
-        )
+        logger.info(f"✓ Loaded {len(y):,} samples with {len(unique_classes):,} unique classes")
         logger.info(f"  Class range: {unique_classes.min()} - {unique_classes.max()}")
 
         # Try to load standard JIS mapping from metadata

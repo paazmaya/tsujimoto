@@ -25,20 +25,18 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from typer.colors import BRIGHT_CYAN, GREEN
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.lib.cli import create_app, echo_error, echo_info, echo_success, CLIContext
+from src.lib.cli import CLIContext, create_app, echo_error, echo_info, echo_success
 from src.lib.config import (
     CNNConfig,
+    HierCodeConfig,
+    QATConfig,
     RNNConfig,
     ViTConfig,
-    QATConfig,
-    HierCodeConfig,
 )
-from src.lib.lightning_trainer import LightningTrainer
 from src.lib.logging_utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -88,13 +86,13 @@ def train(
         "--scheduler",
         help="Learning rate scheduler (cosine, step)",
     ),
-    checkpoint_dir: Optional[Path] = typer.Option(
+    checkpoint_dir: Optional[Path] = typer.Option(  # noqa: B008
         None,
         "--checkpoint-dir",
         "-c",
         help="Checkpoint directory (default: checkpoints/{model})",
     ),
-    dataset_dir: Path = typer.Option(
+    dataset_dir: Path = typer.Option(  # noqa: B008
         Path("data"),
         "--dataset-dir",
         "-d",
@@ -178,11 +176,11 @@ def train(
             config_kwargs["patch_size"] = vit_patch_size
 
         try:
-            config = config_class(**config_kwargs)
+            config_class(**config_kwargs)
             echo_success(f"Configuration created: {model}")
         except Exception as e:
             echo_error(f"Invalid configuration: {e}")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
 
         # Create checkpoint directory
         if checkpoint_dir is None:
@@ -210,9 +208,8 @@ def validate():
     echo_info("Validating setup...")
 
     try:
-        import torch
         import pytorch_lightning as pl
-        from datasets import load_dataset
+        import torch
 
         echo_success(f"PyTorch: {torch.__version__}")
         echo_success(f"PyTorch Lightning: {pl.__version__}")
@@ -221,7 +218,7 @@ def validate():
 
     except ImportError as e:
         echo_error(f"Missing dependency: {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command()
@@ -250,7 +247,6 @@ def show_config(
 
     config = config_class()
     echo_info(f"Default configuration for {model}:")
-    print()
 
     # Display as formatted dict
     import json

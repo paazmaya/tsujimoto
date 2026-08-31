@@ -14,9 +14,9 @@ Features:
 Example Usage:
     >>> import typer
     >>> from src.lib.cli import create_app, add_training_arguments
-    >>> 
+    >>>
     >>> app = create_app(name="train-kanji")
-    >>> 
+    >>>
     >>> @app.command()
     >>> def train_cnn(
     ...     epochs: int = typer.Option(100, help="Number of epochs"),
@@ -25,7 +25,7 @@ Example Usage:
     ... ):
     ...     '''Train a CNN model.'''
     ...     typer.echo(f"Training {model_type} for {epochs} epochs")
-    >>> 
+    >>>
     >>> if __name__ == "__main__":
     ...     app()
 """
@@ -43,7 +43,7 @@ logger = setup_logger(__name__)
 
 def create_app(
     name: str = "kanji-cli",
-    help: Optional[str] = None,
+    help_text: Optional[str] = None,  # noqa: A002
     version: str = "0.1.0",
 ) -> typer.Typer:
     """
@@ -59,7 +59,7 @@ def create_app(
     """
     app = typer.Typer(
         name=name,
-        help=help or f"{name} - Kanji Recognition Training Tools",
+        help=help_text or f"{name} - Kanji Recognition Training Tools",
         pretty_exceptions_enable=True,
     )
 
@@ -129,13 +129,13 @@ def add_training_command(
             help="Learning rate",
             min=0.0,
         ),
-        checkpoint_dir: Path = typer.Option(
+        checkpoint_dir: Path = typer.Option(  # noqa: B008
             f"checkpoints/{model_type}",
             "--checkpoint-dir",
             "-c",
             help="Checkpoint directory",
         ),
-        dataset_dir: Path = typer.Option(
+        dataset_dir: Path = typer.Option(  # noqa: B008
             "data",
             "--dataset-dir",
             "-d",
@@ -166,7 +166,7 @@ def add_training_command(
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         # This is a placeholder - actual training logic goes in the app
-        echo_success(f"Training configured (implementation goes in calling code)")
+        echo_success("Training configured (implementation goes in calling code)")
 
     return train
 
@@ -245,6 +245,6 @@ class CLIContext:
 # CLI app instance for reuse
 main_app = create_app(
     name="tsujimoto",
-    help="Kanji recognition training and evaluation tools",
+    help_text="Kanji recognition training and evaluation tools",
     version="0.1.0",
 )

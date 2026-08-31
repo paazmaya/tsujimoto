@@ -3,16 +3,18 @@
 
 import pytest
 
-from src.lib.character_mapping import JISConverter
 from scripts.measure_co2_emissions import get_system_info
+from src.lib.character_mapping import JISConverter
 
 # Create JISConverter instance for test wrappers
 _jis_converter = JISConverter()
+
 
 # Helper functions for backwards compatibility with test code
 def jis_to_unicode(code):
     """Wrapper for JISConverter.jis_to_unicode()"""
     return _jis_converter.jis_to_unicode(code)
+
 
 def estimate_stroke_count(char):
     """Wrapper for JISConverter.estimate_stroke_count()"""
@@ -137,21 +139,24 @@ class TestSetupVerification:
     def test_setup_verifier_imports(self):
         """Test that SetupVerifier can be imported."""
         from src.lib.setup_verification import SetupVerifier
+
         assert SetupVerifier is not None
 
     def test_setup_verifier_can_instantiate(self):
         """Test that SetupVerifier can be instantiated."""
         from src.lib.setup_verification import SetupVerifier
+
         verifier = SetupVerifier(verbose=False)
         assert verifier is not None
 
     def test_setup_verifier_has_methods(self):
         """Test that SetupVerifier has verification methods."""
         from src.lib.setup_verification import SetupVerifier
+
         verifier = SetupVerifier(verbose=False)
-        assert hasattr(verifier, 'verify_python_version')
-        assert hasattr(verifier, 'verify_virtual_environment')
-        assert hasattr(verifier, 'verify_dependencies')
+        assert hasattr(verifier, "verify_python_version")
+        assert hasattr(verifier, "verify_virtual_environment")
+        assert hasattr(verifier, "verify_dependencies")
 
 
 class TestSystemInfo:

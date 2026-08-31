@@ -1,4 +1,5 @@
 """Tests for optimization_advanced module (Phase 6)."""
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,9 +11,10 @@ from src.lib.optimization_advanced import ModelOptimizer, create_optimizer
 
 # Check for optional dependencies
 try:
-    import onnx
-    HAS_ONNX = True
-except ImportError:
+    import importlib.util
+
+    HAS_ONNX = importlib.util.find_spec("onnx") is not None
+except (ImportError, ModuleNotFoundError):
     HAS_ONNX = False
 
 

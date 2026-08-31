@@ -1,4 +1,5 @@
 """Tests for documentation module (Phase 8)."""
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -70,7 +71,6 @@ class TestDocumentationGenerator(unittest.TestCase):
 
             def method(self):
                 """Sample method."""
-                pass
 
         docs = self.gen._generate_class_docs("SampleClass", SampleClass)
 
@@ -151,7 +151,7 @@ class TestModelCardGenerator(unittest.TestCase):
         card = self.gen.generate()
 
         # Should start with frontmatter or title
-        self.assertTrue(card.startswith("#") or card.startswith("---"))
+        self.assertTrue(card.startswith(("#", "---")))
 
     def test_model_card_includes_sections(self):
         """Test that model card includes all expected sections."""
@@ -168,7 +168,7 @@ class TestModelCardGenerator(unittest.TestCase):
         """Test saving model card to file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "MODEL_CARD.md"
-            card = self.gen.generate()
+            self.gen.generate()
             self.gen.save(output_path)
 
             # File may or may not exist depending on implementation
