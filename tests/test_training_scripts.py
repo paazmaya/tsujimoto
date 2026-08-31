@@ -200,112 +200,115 @@ class TestGenerateMapping:
 
     def test_jis_to_unicode_hiragana(self):
         """Test hiragana conversion from JIS."""
-        from scripts.generate_mapping import jis_to_unicode
-
-        result = jis_to_unicode("2421")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.jis_to_unicode("2421")
         assert isinstance(result, str)
         assert len(result) >= 1
 
     def test_jis_to_unicode_katakana(self):
         """Test katakana conversion from JIS."""
-        from scripts.generate_mapping import jis_to_unicode
-
-        result = jis_to_unicode("2521")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.jis_to_unicode("2521")
         assert isinstance(result, str)
         assert len(result) >= 1
 
     def test_jis_to_unicode_kanji(self):
         """Test kanji conversion from JIS."""
-        from scripts.generate_mapping import jis_to_unicode
-
-        result = jis_to_unicode("3021")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.jis_to_unicode("3021")
         assert isinstance(result, str)
         assert len(result) >= 1
 
     def test_jis_to_unicode_invalid(self):
         """Test invalid JIS code handling."""
-        from scripts.generate_mapping import jis_to_unicode
-
-        result = jis_to_unicode("ZZZZ")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.jis_to_unicode("ZZZZ")
         assert isinstance(result, str)
         # Should return placeholder for invalid codes
         assert "JIS" in result or result.startswith("[")
 
     def test_estimate_stroke_count_single_char(self):
         """Test stroke count for single character."""
-        from scripts.generate_mapping import estimate_stroke_count
-
-        result = estimate_stroke_count("a")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.estimate_stroke_count("a")
         assert isinstance(result, int)
         assert result >= 1
 
     def test_estimate_stroke_count_hiragana(self):
         """Test stroke count for hiragana."""
-        from scripts.generate_mapping import estimate_stroke_count
-
-        result = estimate_stroke_count("あ")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.estimate_stroke_count("あ")
         assert isinstance(result, int)
         assert 1 <= result <= 25
 
     def test_estimate_stroke_count_kanji(self):
         """Test stroke count for kanji."""
-        from scripts.generate_mapping import estimate_stroke_count
-
-        result = estimate_stroke_count("漢")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.estimate_stroke_count("漢")
         assert isinstance(result, int)
         assert 1 <= result <= 25
 
     def test_estimate_stroke_count_empty(self):
         """Test stroke count for empty string."""
-        from scripts.generate_mapping import estimate_stroke_count
-
-        result = estimate_stroke_count("")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.estimate_stroke_count("")
         assert isinstance(result, int)
 
     def test_estimate_stroke_count_multi_char(self):
         """Test stroke count for multi-character string."""
-        from scripts.generate_mapping import estimate_stroke_count
-
-        result = estimate_stroke_count("abc")
+        from src.lib.character_mapping import JISConverter
+        converter = JISConverter()
+        result = converter.estimate_stroke_count("abc")
         assert isinstance(result, int)
 
 
-class TestPreflight:
-    """Extended tests for preflight checks."""
+class TestSetupVerification:
+    """Extended tests for setup verification."""
 
-    def test_preflight_module_imports(self):
-        """Test preflight_check module imports."""
-        from scripts import preflight_check
+    def test_setup_verifier_module_imports(self):
+        """Test SetupVerifier module imports."""
+        from src.lib.setup_verification import SetupVerifier
 
-        assert preflight_check is not None
+        assert SetupVerifier is not None
 
-    def test_check_virtual_environment(self):
-        """Test virtual environment check."""
+    def test_verify_virtual_environment(self):
+        """Test virtual environment verification."""
         try:
-            from scripts.preflight_check import check_virtual_environment
+            from src.lib.setup_verification import SetupVerifier
 
-            result = check_virtual_environment()
-            assert isinstance(result, (bool, type(None)))
+            verifier = SetupVerifier(verbose=False)
+            result = verifier.verify_virtual_environment()
+            assert isinstance(result, bool)
         except (ImportError, AttributeError):
             pytest.skip("Function not available")
 
-    def test_check_gpu_availability(self):
-        """Test GPU availability check."""
+    def test_verify_gpu_setup(self):
+        """Test GPU availability verification."""
         try:
-            from scripts.preflight_check import check_gpu_availability
+            from src.lib.setup_verification import SetupVerifier
 
-            result = check_gpu_availability()
-            assert isinstance(result, (bool, type(None)))
+            verifier = SetupVerifier(verbose=False)
+            result = verifier.verify_gpu_setup()
+            assert isinstance(result, dict)
         except (ImportError, AttributeError):
             pytest.skip("Function not available")
 
-    def test_check_dependencies(self):
-        """Test dependency checking."""
+    def test_verify_dependencies(self):
+        """Test dependency verification."""
         try:
-            from scripts.preflight_check import check_dependencies
+            from src.lib.setup_verification import SetupVerifier
 
-            result = check_dependencies()
-            assert isinstance(result, (bool, dict, type(None)))
+            verifier = SetupVerifier(verbose=False)
+            result = verifier.verify_dependencies()
+            assert isinstance(result, dict)
         except (ImportError, AttributeError):
             pytest.skip("Function not available")
 

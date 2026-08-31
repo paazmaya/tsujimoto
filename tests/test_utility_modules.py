@@ -3,8 +3,20 @@
 
 import pytest
 
-from scripts.generate_mapping import estimate_stroke_count, jis_to_unicode
+from src.lib.character_mapping import JISConverter
 from scripts.measure_co2_emissions import get_system_info
+
+# Create JISConverter instance for test wrappers
+_jis_converter = JISConverter()
+
+# Helper functions for backwards compatibility with test code
+def jis_to_unicode(code):
+    """Wrapper for JISConverter.jis_to_unicode()"""
+    return _jis_converter.jis_to_unicode(code)
+
+def estimate_stroke_count(char):
+    """Wrapper for JISConverter.estimate_stroke_count()"""
+    return _jis_converter.estimate_stroke_count(char)
 
 
 class TestJISToUnicode:
@@ -119,30 +131,27 @@ class TestEstrokeCount:
         assert all(r == results[0] for r in results)
 
 
-class TestPreflight:
-    """Tests for preflight check module."""
+class TestSetupVerification:
+    """Tests for setup verification module."""
 
-    def test_preflight_module_imports(self):
-        """Test that preflight_check module can be imported."""
-        try:
-            from scripts import preflight_check
+    def test_setup_verifier_imports(self):
+        """Test that SetupVerifier can be imported."""
+        from src.lib.setup_verification import SetupVerifier
+        assert SetupVerifier is not None
 
-            assert preflight_check is not None
-        except ImportError:
-            pass
+    def test_setup_verifier_can_instantiate(self):
+        """Test that SetupVerifier can be instantiated."""
+        from src.lib.setup_verification import SetupVerifier
+        verifier = SetupVerifier(verbose=False)
+        assert verifier is not None
 
-    def test_preflight_has_checks(self):
-        """Test that preflight module has check functions."""
-        try:
-            from scripts.preflight_check import (
-                check_gpu_availability,
-                check_virtual_environment,
-            )
-
-            assert check_virtual_environment is not None
-            assert check_gpu_availability is not None
-        except ImportError:
-            pass
+    def test_setup_verifier_has_methods(self):
+        """Test that SetupVerifier has verification methods."""
+        from src.lib.setup_verification import SetupVerifier
+        verifier = SetupVerifier(verbose=False)
+        assert hasattr(verifier, 'verify_python_version')
+        assert hasattr(verifier, 'verify_virtual_environment')
+        assert hasattr(verifier, 'verify_dependencies')
 
 
 class TestSystemInfo:

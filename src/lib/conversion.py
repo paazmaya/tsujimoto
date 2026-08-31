@@ -603,3 +603,281 @@ def log_conversion_summary(
     logger.info("Converted size: %.2f MB", converted_size / 1e6)
     logger.info("Compression: %.1fx (%+.1f%%)", ratio, -percent)
     logger.info("=" * 60)
+
+
+def quantize_model_4bit_nf4(
+    model: torch.nn.Module,
+    device: str = "cuda",
+    double_quant: bool = True,
+    compute_dtype: torch.dtype = torch.float16,
+) -> torch.nn.Module:
+    """
+    Quantize model to 4-bit using BitsAndBytes NF4 (Normalized Float 4-bit).
+
+    NF4 is optimized for normally distributed weights and provides
+    better accuracy preservation than standard 4-bit quantization.
+
+    Args:
+        model: PyTorch model to quantize
+        device: Device to use (cuda recommended)
+        double_quant: Whether to quantize the scale factors (default: True)
+        compute_dtype: Internal computation dtype (default: torch.float16)
+
+    Returns:
+        Quantized model with Linear4bit layers
+
+    Raises:
+        ImportError: If BitsAndBytes not installed
+
+    Example:
+        >>> model = load_model()
+        >>> quant_model = quantize_model_4bit_nf4(model)
+        >>> # Save and the benefit is seen during inference (lower VRAM usage)
+    """
+    logger.info("🔄 Quantizing model to 4-bit NF4 (BitsAndBytes)...")
+
+    try:
+        from bitsandbytes.nn import Linear4bit
+    except ImportError as e:
+        logger.error("❌ BitsAndBytes not installed: %s", e)
+        logger.info("   Install with: pip install bitsandbytes")
+        raise
+
+    model = model.to(device)
+    model.eval()
+
+    # Replace Linear layers with Linear4bit (NF4)
+    quantized_count = 0
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear):
+            q_linear = Linear4bit(
+                module.in_features,
+                module.out_features,
+                bias=module.bias is not None,
+                compute_dtype=compute_dtype,
+                compress_statistics=double_quant,
+                quant_type="nf4",
+            )
+
+            # Copy weights and bias
+            if module.weight is not None:
+                q_linear.weight = module.weight
+            if module.bias is not None:
+                q_linear.bias = module.bias
+
+            # Replace in model hierarchy
+            parent_name = ".".join(name.split(".")[:-1])
+            child_name = name.split(".")[-1]
+
+            parent = model
+            for attr in parent_name.split("."):
+                if attr:
+                    parent = getattr(parent, attr)
+
+            if parent_name:
+                setattr(parent, child_name, q_linear)
+            else:
+                setattr(model, child_name, q_linear)
+
+            quantized_count += 1
+            if quantized_count <= 5:
+                logger.info("  → Quantized: %s", name)
+            elif quantized_count == 6:
+                logger.info("  → ... and %d more layers", quantized_count - 5)
+
+    logger.info("✓ 4-bit NF4 quantization complete (%d layers)", quantized_count)
+    return model
+
+
+def quantize_model_4bit_fp4(
+    model: torch.nn.Module,
+    device: str = "cuda",
+    double_quant: bool = True,
+    compute_dtype: torch.dtype = torch.float16,
+) -> torch.nn.Module:
+    """
+    Quantize model to 4-bit using BitsAndBytes FP4 (Float 4-bit).
+
+    FP4 uses standard 4-bit floating point representation with sign bit.
+    Slightly faster than NF4 but may have lower accuracy.
+
+    Args:
+        model: PyTorch model to quantize
+        device: Device to use (cuda recommended)
+        double_quant: Whether to quantize the scale factors (default: True)
+        compute_dtype: Internal computation dtype (default: torch.float16)
+
+    Returns:
+        Quantized model with Linear4bit layers
+
+    Raises:
+        ImportError: If BitsAndBytes not installed
+    """
+    logger.info("🔄 Quantizing model to 4-bit FP4 (BitsAndBytes)...")
+
+    try:
+        from bitsandbytes.nn import Linear4bit
+    except ImportError as e:
+        logger.error("❌ BitsAndBytes not installed: %s", e)
+        raise
+
+    model = model.to(device)
+    model.eval()
+
+    quantized_count = 0
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear):
+            q_linear = Linear4bit(
+                module.in_features,
+                module.out_features,
+                bias=module.bias is not None,
+                compute_dtype=compute_dtype,
+                compress_statistics=double_quant,
+                quant_type="fp4",
+            )
+
+            if module.weight is not None:
+                q_linear.weight = module.weight
+            if module.bias is not None:
+                q_linear.bias = module.bias
+
+            parent_name = ".".join(name.split(".")[:-1])
+            child_name = name.split(".")[-1]
+            parent = model
+            for attr in parent_name.split("."):
+                if attr:
+                    parent = getattr(parent, attr)
+
+            if parent_name:
+                setattr(parent, child_name, q_linear)
+            else:
+                setattr(model, child_name, q_linear)
+
+            quantized_count += 1
+
+    logger.info("✓ 4-bit FP4 quantization complete (%d layers)", quantized_count)
+    return model
+
+
+def quantize_model_bfloat16(model: torch.nn.Module) -> torch.nn.Module:
+    """
+    Convert model to BFloat16 (16-bit Brain Float) format.
+
+    BFloat16 preserves dynamic range while reducing precision,
+    resulting in ~2x size reduction with minimal accuracy loss.
+
+    Args:
+        model: PyTorch model to convert
+
+    Returns:
+        Model converted to BFloat16
+    """
+    logger.info("🔄 Converting model to BFloat16 (FP32 → BF16)...")
+
+    model = model.to(torch.bfloat16)
+    logger.info("✓ BFloat16 conversion complete")
+    return model
+
+
+def quantize_model(
+    model: torch.nn.Module,
+    quantization_format: str = "int8",
+    device: str = "cuda",
+) -> Tuple[torch.nn.Module, dict]:
+    """
+    Unified model quantization interface supporting multiple formats.
+
+    Consolidates quantization logic from multiple scripts into single API.
+    Supports INT8, 4-bit NF4, 4-bit FP4, and BFloat16 quantization.
+
+    Args:
+        model: PyTorch model to quantize
+        quantization_format: One of:
+            - "int8" (INT8 dynamic quantization, ~4x compression)
+            - "4bit_nf4" (4-bit NF4 via BitsAndBytes, ~8x compression)
+            - "4bit_fp4" (4-bit FP4 via BitsAndBytes, ~8x compression)
+            - "bfloat16" (Brain Float 16, ~2x compression)
+            - "float32" or "none" (no quantization)
+        device: Device to use (cuda recommended for quantization)
+
+    Returns:
+        Tuple of (quantized_model, metadata_dict) with quantization info
+
+    Raises:
+        ValueError: If quantization_format not recognized
+        ImportError: If required library not installed
+
+    Example:
+        >>> model = load_trained_model()
+        >>> quant_model, meta = quantize_model(model, "int8")
+        >>> print(f"Quantized to {quant_model}: {meta}")
+    """
+    logger.info("=" * 70)
+    logger.info("UNIFIED MODEL QUANTIZATION")
+    logger.info("=" * 70)
+
+    quantization_format = quantization_format.lower()
+    valid_formats = ["int8", "4bit_nf4", "4bit_fp4", "bfloat16", "float32", "none"]
+
+    if quantization_format not in valid_formats:
+        raise ValueError(
+            f"Unknown quantization format '{quantization_format}'. "
+            f"Must be one of: {', '.join(valid_formats)}"
+        )
+
+    # Calculate original size
+    original_state = model.state_dict()
+    original_size = sum(
+        v.numel() * v.element_size() for v in original_state.values() if v is not None
+    )
+    logger.info(f"Original model size: {original_size / 1e6:.2f} MB")
+
+    quantized_model = model
+    metadata = {"quantization_format": quantization_format, "device": device}
+
+    try:
+        if quantization_format == "int8":
+            quantized_model, orig_size, _ = quantize_model_int8(model, device=device)
+            metadata["method"] = "Dynamic INT8"
+            metadata["compression_target"] = "~4x"
+
+        elif quantization_format == "4bit_nf4":
+            quantized_model = quantize_model_4bit_nf4(model, device=device)
+            metadata["method"] = "4-bit NF4 (BitsAndBytes)"
+            metadata["compression_target"] = "~8x"
+
+        elif quantization_format == "4bit_fp4":
+            quantized_model = quantize_model_4bit_fp4(model, device=device)
+            metadata["method"] = "4-bit FP4 (BitsAndBytes)"
+            metadata["compression_target"] = "~8x"
+
+        elif quantization_format == "bfloat16":
+            quantized_model = quantize_model_bfloat16(model)
+            metadata["method"] = "BFloat16"
+            metadata["compression_target"] = "~2x"
+
+        elif quantization_format in ["float32", "none"]:
+            logger.info("ℹ No quantization applied (float32)")
+            metadata["method"] = "None (float32)"
+            metadata["compression_target"] = "1x"
+
+    except ImportError as e:
+        logger.error(f"❌ Quantization failed: {e}")
+        raise
+
+    # Calculate quantized size
+    quantized_state = quantized_model.state_dict()
+    quantized_size = sum(
+        v.numel() * v.element_size() for v in quantized_state.values() if v is not None
+    )
+
+    ratio, percent = calculate_compression_ratio(original_size, quantized_size)
+    metadata["original_size_mb"] = original_size / 1e6
+    metadata["quantized_size_mb"] = quantized_size / 1e6
+    metadata["compression_ratio"] = round(ratio, 2)
+    metadata["size_reduction_percent"] = round(percent, 1)
+
+    logger.info(f"✓ Quantization complete: {ratio:.1f}x compression ({percent:.1f}% reduction)")
+    logger.info("=" * 70)
+
+    return quantized_model, metadata

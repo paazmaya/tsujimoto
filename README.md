@@ -4,17 +4,74 @@ This project trains multiple neural network architectures for Japanese kanji cha
 
 ## 📚 Documentation
 
-| Document                                 | Purpose                                                                           |
-| ---------------------------------------- | --------------------------------------------------------------------------------- |
-| [**PROJECT_DIARY.md**](PROJECT_DIARY.md) | Complete project history, all training phases, research references, key learnings |
-| [**RESEARCH.md**](RESEARCH.md)           | Research findings, architecture comparisons, citations                            |
-| [**model-card.md**](model-card.md)       | HuggingFace model card with carbon footprint analysis                             |
+| Document                                         | Purpose                                                                           |
+| ------------------------------------------------ | --------------------------------------------------------------------------------- |
+| [**PROJECT_DIARY.md**](PROJECT_DIARY.md)        | Complete project history, all training phases, research references, key learnings |
+| [**RESEARCH.md**](RESEARCH.md)                  | Research findings, architecture comparisons, citations                            |
+| [**model-card.md**](model-card.md)              | HuggingFace model card with carbon footprint analysis                             |
+| [**docs/REFACTORING_MIGRATION.md**](docs/REFACTORING_MIGRATION.md) | Code consolidation guide: old scripts → new modules + CLI |
 
 ### Quantization Documentation (4-bit BitsAndBytes)
 
 | Document                                                     | Purpose                                 |
 | ------------------------------------------------------------ | --------------------------------------- |
 | [**4BIT_QUANTIZATION_GUIDE.md**](4BIT_QUANTIZATION_GUIDE.md) | Technical details, deployment checklist |
+
+## 📦 Reusable Library Modules
+
+This project consolidates 31 scripts into 7 reusable modules under `src/lib/` (eliminating ~5,000 LOC of duplication) plus 3 unified CLI entry points:
+
+### Library Modules (`src/lib/`)
+
+| Module                          | Classes/Functions                              | Purpose                                      |
+| ------------------------------- | ---------------------------------------------- | -------------------------------------------- |
+| `character_mapping.py` (370 LOC) | `JISConverter`, `CharacterMappingGenerator`   | JIS ↔ Unicode conversion, character metadata |
+| `metadata_generator.py` (380 LOC) | `ChunkMetadataGenerator`, `RootMetadataGenerator`, `DatasetMetadataManager` | Dataset metadata generation for all ETL variants |
+| `conversion.py` (500 LOC)       | `quantize_model()`, `quantize_model_int8()`, `quantize_model_4bit_nf4()`, etc. | Unified quantization API (INT8, 4-bit NF4/FP4, BFloat16) |
+| `model_export.py` (480 LOC)     | `ModelExporter`                                | Multi-format export (PyTorch, ONNX, SafeTensors, GGUF) |
+| `onnx_analysis.py` (420 LOC)    | `ONNXModelAnalyzer`, `PoolingComparisonAnalyzer` | ONNX model inspection and comparison          |
+| `base_trainer.py` (900+ LOC)    | `BaseModelTrainer`, `CNNTrainer`, `RNNTrainer`, `ViTTrainer`, `HierCodeTrainer`, `QATTrainer`, `HierCodeHiGITATrainer`, `setup_trainer_for_model()` | Unified training loop for all architectures |
+| `setup_verification.py` (800+ LOC) | `SetupVerifier`                             | Environment and dataset validation           |
+
+### Unified CLI Entry Points
+
+| Script                          | Consolidates                                | Purpose                            |
+| ------------------------------- | ------------------------------------------- | ---------------------------------- |
+| `scripts/convert_model.py`      | Quantization + multi-format export          | Model conversion + quantization    |
+| `scripts/verify_setup.py`       | Environment and dataset validation          | Environment verification          |
+| `scripts/analyze_model.py`      | ONNX model inspection and analysis          | ONNX model analysis                |
+
+### Quick Library Usage Examples
+
+**Character Mapping:**
+```python
+from src.lib.character_mapping import JISConverter
+char = JISConverter.jis_to_unicode(0x2421)  # Convert JIS → Unicode
+strokes = JISConverter.estimate_stroke_count('亜')
+```
+
+**Quantization:**
+```python
+from src.lib.conversion import quantize_model
+quantized, metadata = quantize_model(model, "int8", "cpu")  # or "4bit_nf4", "4bit_fp4", "bfloat16"
+```
+
+**Training:**
+```python
+from src.lib.base_trainer import setup_trainer_for_model
+trainer = setup_trainer_for_model(model, train_loader, val_loader, optimizer, model_type="cnn")
+history = trainer.train(num_epochs=30, early_stopping=True)
+```
+
+**Environment Verification:**
+```python
+from src.lib.setup_verification import SetupVerifier
+verifier = SetupVerifier()
+results = verifier.run_all_checks()
+print("✓ Ready" if results["all_ok"] else "✗ Fix issues")
+```
+
+**See [docs/REFACTORING_MIGRATION.md](docs/REFACTORING_MIGRATION.md) for detailed module documentation and API reference.**
 
 ## 🚀 Quick Start
 
@@ -26,8 +83,8 @@ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu
 # Install dependencies with uv
 uv sync
 
-# Verify environment
-uv run python scripts/preflight_check.py
+# Verify environment (new unified CLI)
+uv run python scripts/verify_setup.py
 ```
 
 ### Prepare Multi-ETL Dataset
@@ -36,7 +93,10 @@ uv run python scripts/preflight_check.py
 # Process and combine ETL6, ETL7, ETL8G, ETL9G into single dataset
 # (934K+ samples, 4,154 classes - includes kanji, hiragana, katakana, symbols, numerals)
 uv run python scripts/prepare_dataset.py
-uv run python scripts/generate_chunk_metadata.py
+
+# Auto-generate metadata (consolidated from old scripts)
+# Uses src/lib/metadata_generator module
+uv run python scripts/train.py --generate-metadata
 ```
 
 ### Training
