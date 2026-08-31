@@ -99,6 +99,57 @@ try:
 except ImportError:
     pass
 
+try:
+    from .lightning_module import KanjiRecognitionLightningModule
+except ImportError:
+    pass
+
+try:
+    from .lightning_trainer import LightningTrainer, create_trainer
+except ImportError:
+    pass
+
+try:
+    from .datasets import KanjiDatasetLoader, create_dataset_loader
+except ImportError:
+    pass
+
+try:
+    from .cli import create_app, main_app
+except ImportError:
+    pass
+
+try:
+    from .hub import HubModelManager, create_hub_manager
+except ImportError:
+    pass
+
+try:
+    from .optimization_advanced import ModelOptimizer, create_optimizer
+except ImportError:
+    pass
+
+try:
+    from .training_advanced import (
+        DistributedTrainer,
+        ExperimentTracker,
+        ModelRegistry,
+        create_distributed_trainer,
+        create_experiment_tracker,
+    )
+except ImportError:
+    pass
+
+try:
+    from .documentation import (
+        DocumentationGenerator,
+        ModelCardGenerator,
+        create_documentation_generator,
+        create_model_card_generator,
+    )
+except ImportError:
+    pass
+
 # New modules added in consolidation
 try:
     from .character_mapping import (
@@ -179,6 +230,33 @@ __all__ = [
     "save_training_results",
     "save_best_model",
     "load_best_model_for_testing",
+    # Lightning (NEW)
+    "KanjiRecognitionLightningModule",
+    "LightningTrainer",
+    "create_trainer",
+    # Datasets (NEW)
+    "KanjiDatasetLoader",
+    "create_dataset_loader",
+    # CLI (NEW)
+    "create_app",
+    "main_app",
+    # Hub (NEW)
+    "HubModelManager",
+    "create_hub_manager",
+    # Optimization (NEW - Phase 6)
+    "ModelOptimizer",
+    "create_optimizer",
+    # Training Advanced (NEW - Phase 7)
+    "DistributedTrainer",
+    "ExperimentTracker",
+    "ModelRegistry",
+    "create_distributed_trainer",
+    "create_experiment_tracker",
+    # Documentation (NEW - Phase 8)
+    "DocumentationGenerator",
+    "ModelCardGenerator",
+    "create_documentation_generator",
+    "create_model_card_generator",
     # ONNX
     "export_to_onnx",
     "get_onnx_model_info",

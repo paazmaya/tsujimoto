@@ -1,63 +1,63 @@
 """
-Unified logging configuration for all scripts.
+Unified logging configuration using Loguru.
 
 Provides consistent logging setup across the project with optional file output.
+Uses loguru for better performance, automatic rotation, and structured logging.
 """
 
-import logging
 import sys
 from pathlib import Path
 from typing import Optional
 
+from loguru import logger as loguru_logger
+
+# Configure loguru default logging to console
+loguru_logger.remove()  # Remove default handler
+loguru_logger.add(
+    sys.stderr,
+    format="<level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    level="INFO",
+    colorize=True,
+)
+
 
 def setup_logger(
     name: str = "__main__",
-    level: int = logging.INFO,
+    level: str = "INFO",
     log_file: Optional[str] = None,
-) -> logging.Logger:
+):
     """
     Configure and return a logger with consistent formatting.
 
+    Uses loguru for superior performance and features. This function provides
+    backward compatibility with the previous logging API.
+
     Args:
         name: Logger name (typically __name__)
-        level: Logging level (default: INFO)
+        level: Logging level as string (default: "INFO")
         log_file: Optional file path for log output
 
     Returns:
-        logging.Logger: Configured logger instance
+        loguru logger instance
     """
-    logger = logging.getLogger(name)
+    # Configure file logging if requested
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        loguru_logger.add(
+            str(log_path),
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name} | {message}",
+            level=level,
+            rotation="100 MB",  # Auto-rotate when file reaches 100MB
+            retention="7 days",  # Keep logs for 7 days
+            compression="zip",  # Compress rotated logs
+        )
 
-    # Only add handlers if none exist to avoid duplicates
-    if not logger.handlers:
-        logger.setLevel(level)
-
-        # Console handler
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(level)
-        formatter = logging.Formatter("%(message)s")
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-
-        # File handler (optional)
-        if log_file:
-            log_path = Path(log_file)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            file_handler = logging.FileHandler(log_path)
-            file_handler.setLevel(level)
-            detailed_formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-            file_handler.setFormatter(detailed_formatter)
-            logger.addHandler(file_handler)
-
-    return logger
+    return loguru_logger
 
 
 def suppress_warnings():
     """Suppress non-critical warnings from dependencies."""
-    # Suppress PyTorch's TypedStorage deprecation warning (internal, not in user code)
     import warnings
 
     warnings.filterwarnings("ignore", category=UserWarning, message=".*TypedStorage.*")

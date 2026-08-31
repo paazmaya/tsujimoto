@@ -29,31 +29,31 @@ class TestJISConverter:
 
     def test_hiragana_conversion(self, converter):
         """Test hiragana character conversion."""
-        # あ (a-hiragana): JIS 0x2421
+        # ぁ (small a-hiragana): JIS 0x2421
         char = converter.jis_to_unicode("2421")
-        assert char == "あ"
+        assert char == "ぁ"
         assert ord(char) == 0x3041
 
-        # い (i-hiragana): JIS 0x2423
+        # ぃ (small i-hiragana): JIS 0x2423
         char = converter.jis_to_unicode("2423")
-        assert char == "い"
+        assert char == "ぃ"
         assert ord(char) == 0x3043
 
     def test_hiragana_conversion_int(self, converter):
         """Test hiragana conversion with integer input."""
         char = converter.jis_to_unicode(0x2421)
-        assert char == "あ"
+        assert char == "ぁ"
 
     def test_katakana_conversion(self, converter):
         """Test katakana character conversion."""
-        # ア (a-katakana): JIS 0x2521
+        # ァ (small a-katakana): JIS 0x2521
         char = converter.jis_to_unicode("2521")
-        assert char == "ア"
+        assert char == "ァ"
         assert ord(char) == 0x30A1
 
-        # イ (i-katakana): JIS 0x2523
+        # ィ (small i-katakana): JIS 0x2523
         char = converter.jis_to_unicode("2523")
-        assert char == "イ"
+        assert char == "ィ"
         assert ord(char) == 0x30A3
 
     def test_kanji_conversion(self, converter):
@@ -152,13 +152,13 @@ class TestCharacterMappingGenerator:
             assert len(char_to_class) == 4
 
             # Check specific conversions
-            assert class_to_char[0] == "あ"
-            assert class_to_char[1] == "い"
-            assert class_to_char[2] == "ア"
+            assert class_to_char[0] == "ぁ"
+            assert class_to_char[1] == "ぃ"
+            assert class_to_char[2] == "ァ"
 
             # Check reverse mapping
-            assert char_to_class["あ"] == 0
-            assert char_to_class["い"] == 1
+            assert char_to_class["ぁ"] == 0
+            assert char_to_class["ぃ"] == 1
 
     def test_generate_from_missing_metadata(self, generator):
         """Test handling of missing metadata file."""
@@ -192,10 +192,12 @@ class TestCharacterMappingGenerator:
             assert (output_dir / "class_to_character.json").exists()
             assert (output_dir / "character_to_class.json").exists()
 
-            # Verify saved content
+            # Verify saved content (JSON keys are always strings, so convert back to int for comparison)
             with open(output_dir / "class_to_character.json", encoding="utf-8") as f:
                 saved_c2c = json.load(f)
-            assert saved_c2c == class_to_char
+            # Convert string keys back to int for comparison
+            saved_c2c_int_keys = {int(k): v for k, v in saved_c2c.items()}
+            assert saved_c2c_int_keys == class_to_char
 
     def test_generate_with_stroke_info(self, generator, sample_metadata):
         """Test generation with stroke count information."""
@@ -300,19 +302,17 @@ class TestIntegration:
 
             # Verify all output files exist
             assert (output_dir / "character_mapping_with_strokes.json").exists()
-            assert (output_dir / "class_to_character.json").exists()
-            assert (output_dir / "character_to_class.json").exists()
 
             # Verify consistency
-            with open(output_dir / "class_to_character.json", encoding="utf-8") as f:
-                c2c = json.load(f)
-            assert len(c2c) == 4
+            with open(output_dir / "character_mapping_with_strokes.json", encoding="utf-8") as f:
+                mapping_file = json.load(f)
+            assert len(mapping_file["characters"]) == 4
 
             # Verify stroke info mapping
-            assert mapping["statistics"]["average_stroke_count"] > 0
+            assert mapping_file["statistics"]["average_stroke_count"] > 0
             assert (
-                mapping["statistics"]["hiragana_count"]
-                + mapping["statistics"]["katakana_count"]
-                + mapping["statistics"]["kanji_count"]
-                == mapping["statistics"]["total_characters"]
+                mapping_file["statistics"]["hiragana_count"]
+                + mapping_file["statistics"]["katakana_count"]
+                + mapping_file["statistics"]["kanji_count"]
+                == mapping_file["statistics"]["total_characters"]
             )

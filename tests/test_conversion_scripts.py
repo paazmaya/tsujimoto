@@ -183,14 +183,15 @@ class TestAllConversionScriptsLoadable:
 
     def test_all_conversion_modules_can_be_imported(self):
         """Test that all conversion scripts can at least be imported."""
+        # Test actual scripts in the scripts directory
         modules_to_test = [
-            "convert_to_safetensors",
-            "convert_int8_pytorch_to_quantized_onnx",
-            "export_4bit_quantized_onnx",
-            "export_quantized_to_onnx",
-            "export_to_onnx_hiercode",
-            "inspect_onnx_model",
-            "verify_etl9g_setup",
+            "convert_model",
+            "example_safetensors_usage",
+            "prepare_dataset",
+            "train",
+            "train_modern",
+            "verify_setup",
+            "analyze_model",
         ]
 
         loaded_count = 0
@@ -203,7 +204,7 @@ class TestAllConversionScriptsLoadable:
                 pass
 
         # At least some should load successfully
-        assert loaded_count >= 2
+        assert loaded_count >= 3
 
 
 class TestConversionScriptsHaveFunctions:

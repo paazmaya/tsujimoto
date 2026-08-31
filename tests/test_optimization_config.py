@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for optimization_config module."""
 
-from dataclasses import fields
-
 import pytest
 
 from src.lib.config import OptimizationConfig
@@ -121,12 +119,13 @@ class TestOptimizationConfigFields:
     """Tests for configuration fields."""
 
     def test_all_fields_have_defaults(self):
-        """Test that all dataclass fields have defaults."""
+        """Test that all Pydantic model fields have defaults."""
         config = OptimizationConfig()
-        for field in fields(OptimizationConfig):
+        # For Pydantic v2 models, use model_fields from the class
+        for field_name in OptimizationConfig.model_fields:
             # Verify field exists and has a value
-            assert hasattr(config, field.name)
-            assert getattr(config, field.name) is not None
+            assert hasattr(config, field_name)
+            assert getattr(config, field_name) is not None
 
     def test_field_types(self):
         """Test field types."""

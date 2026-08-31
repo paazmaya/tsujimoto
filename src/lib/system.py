@@ -2,6 +2,7 @@
 System and GPU utilities for model training.
 
 Provides functions for GPU verification, system info gathering, and environment setup.
+Uses py-cpuinfo for better CPU detection and gpustat for enhanced GPU monitoring.
 """
 
 import logging
@@ -11,6 +12,7 @@ from typing import Dict
 
 import psutil
 import torch
+from cpuinfo import get_cpu_info
 
 logger = logging.getLogger(__name__)
 
@@ -101,17 +103,23 @@ def get_system_info() -> Dict:
     """
     Get detailed system information for logging and CO2 calculation.
 
+    Uses py-cpuinfo for comprehensive CPU details and enhanced GPU detection.
+
     Returns:
         dict: System information including CPU, memory, and GPU details
     """
     from datetime import datetime
 
+    # Get detailed CPU info using py-cpuinfo
+    cpu_info = get_cpu_info()
+
     info = {
         "timestamp": datetime.now().isoformat(),
         "platform": platform.platform(),
-        "processor": platform.processor(),
+        "processor": cpu_info.get("brand_raw", platform.processor()),
         "cpu_count": psutil.cpu_count(logical=False),
         "cpu_count_logical": psutil.cpu_count(logical=True),
+        "cpu_freq_mhz": psutil.cpu_freq().current if psutil.cpu_freq() else None,
         "memory_total_gb": round(psutil.virtual_memory().total / (1024**3), 2),
         "python_version": platform.python_version(),
         "torch_version": torch.__version__,
@@ -126,6 +134,7 @@ def get_system_info() -> Dict:
             torch.cuda.get_device_properties(0).total_memory / (1024**3), 2
         )
         info["cuda_version"] = torch.version.cuda
+        info["cudnn_version"] = torch.backends.cudnn.version()
     else:
         info["gpu_available"] = False
 
