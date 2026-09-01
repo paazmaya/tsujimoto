@@ -119,12 +119,12 @@ ignore = ["E501", "S101", "S311"]
 # Ignore known deprecation warnings from external libraries
 # These are not our code and will be fixed upstream
 filterwarnings = [
-    # Typer/Click deprecation - will be fixed in Click 9.0 / Typer update
-    "ignore:.*click.utils.get_binary_stream.*:DeprecationWarning",
-    "ignore:.*click.utils.get_text_stream.*:DeprecationWarning",
-    # PyTorch JIT deprecation - will be fixed when PyTorch switches to torch.compile
-    "ignore:.*torch.jit.script.*:DeprecationWarning",
-    "ignore:.*torch.jit.script_method.*:DeprecationWarning",
-    # PyTorch quantization deprecation - will migrate to torchao when more stable on Mac
-    "ignore:.*torch.ao.quantization.*:DeprecationWarning",
+  # Typer/Click deprecation - will be fixed in Click 9.0 / Typer update
+  "ignore:.*click.utils.get_binary_stream.*:DeprecationWarning",
+  "ignore:.*click.utils.get_text_stream.*:DeprecationWarning",
+  # PyTorch JIT deprecation - will be fixed when PyTorch switches to torch.compile
+  "ignore:.*torch.jit.script.*:DeprecationWarning",
+  "ignore:.*torch.jit.script_method.*:DeprecationWarning",
+  # PyTorch quantization deprecation - will migrate to torchao when more stable on Mac
+  "ignore:.*torch.ao.quantization.*:DeprecationWarning",
 ]

@@ -14,7 +14,7 @@ Example:
 
 import json
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from src.lib.logging_utils import setup_logger
 
@@ -367,3 +367,122 @@ class DatasetMetadataManager:
         else:
             logger.error("❌ Some metadata initialization steps failed")
             return False
+
+
+class ResearchDatasetMetadataGenerator:
+    """
+    Generate and manage metadata for research datasets (beyond ETL).
+
+    Handles datasets like MegaHan97K, DKDS, Chronicles-OCR, JaWildText, MCCD,
+    and stroke-level databases using the unified DatasetManifest model.
+    """
+
+    def __init__(self, registry_dir: Optional[Path] = None):
+        """
+        Initialize generator.
+
+        Args:
+            registry_dir: Directory to store dataset manifests
+        """
+        from .dataset_handlers import DatasetRegistry
+
+        self.registry_dir = Path(registry_dir or "data/.registry")
+        self.registry = DatasetRegistry(self.registry_dir)
+
+    def register_etl_datasets(self) -> Dict[str, bool]:
+        """
+        Auto-register existing ETL datasets using DatasetManifest.
+
+        Returns:
+            Dict mapping dataset_id to registration success status
+        """
+        from .dataset_handlers import DatasetManifest
+
+        etl_configs = {
+            "etl6": {
+                "name": "ETL6",
+                "num_classes": 114,
+                "num_samples": 157662,
+                "description": "Numerals, letters, Katakana, symbols",
+            },
+            "etl7": {
+                "name": "ETL7",
+                "num_classes": 48,
+                "num_samples": 16800,
+                "description": "Hiragana",
+            },
+            "etl8g": {
+                "name": "ETL8G",
+                "num_classes": 956,
+                "num_samples": 152960,
+                "description": "Kanji and related characters",
+            },
+            "etl9g": {
+                "name": "ETL9G",
+                "num_classes": 3036,
+                "num_samples": 607200,
+                "description": "Large character set with multiple writers",
+            },
+            "combined_all_etl": {
+                "name": "Combined ETL",
+                "num_classes": 43427,
+                "num_samples": 934000,
+                "description": "Union of all ETL datasets",
+            },
+        }
+
+        results = {}
+        for dataset_id, config in etl_configs.items():
+            try:
+                manifest = DatasetManifest(
+                    dataset_id=dataset_id,
+                    name=config["name"],
+                    source_url="https://www.dl.itc.u-tokyo.ac.jp/cgi-bin/cnpkg_download/download.php",
+                    format_type="numpy_npz",
+                    num_classes=config["num_classes"],
+                    num_samples=config["num_samples"],
+                    description=config["description"],
+                    tags=["etl", "handwritten", "japanese"],
+                    character_sets=["hiragana", "katakana", "kanji", "ascii"],
+                )
+                self.registry.register(manifest)
+                results[dataset_id] = True
+                logger.info(f"✓ Registered ETL dataset: {dataset_id}")
+            except Exception as e:
+                logger.error(f"✗ Failed to register {dataset_id}: {e}")
+                results[dataset_id] = False
+
+        return results
+
+    def get_registry(self):
+        """Get the dataset registry."""
+        return self.registry
+
+    def list_registered_datasets(self) -> List[str]:
+        """Get list of all registered dataset IDs."""
+        return self.registry.list_datasets()
+
+    def get_dataset_info(self, dataset_id: str) -> Optional[Dict]:
+        """
+        Get dataset manifest information.
+
+        Args:
+            dataset_id: Dataset identifier
+
+        Returns:
+            Dataset manifest as dict, or None if not found
+        """
+        manifest = self.registry.get_info(dataset_id)
+        if manifest:
+            return manifest.model_dump()
+        return None
+
+    def find_datasets_by_tag(self, tag: str) -> List[str]:
+        """Find all datasets with a specific tag."""
+        manifests = self.registry.search(tag)
+        return [m.dataset_id for m in manifests]
+
+    def find_datasets_by_language(self, language: str) -> List[str]:
+        """Find all datasets supporting a specific language."""
+        manifests = self.registry.search_by_language(language)
+        return [m.dataset_id for m in manifests]

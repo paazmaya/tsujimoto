@@ -4,13 +4,15 @@ This project trains multiple neural network architectures for Japanese kanji cha
 
 ## 📚 Documentation
 
-| Document                                                           | Purpose                                                                           |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| [**PROJECT_DIARY.md**](PROJECT_DIARY.md)                           | Complete project history, all training phases, research references, key learnings |
-| [**RESEARCH.md**](RESEARCH.md)                                     | Research findings, architecture comparisons, citations                            |
-| [**model-card.md**](model-card.md)                                 | HuggingFace model card with carbon footprint analysis                             |
-| [**docs/TRAINING_GUIDE.md**](docs/TRAINING_GUIDE.md)               | Training guide with examples for base models and advanced methods (Phases 1-6)    |
-| [**docs/REFACTORING_MIGRATION.md**](docs/REFACTORING_MIGRATION.md) | Code consolidation guide: old scripts → new modules + CLI                         |
+| Document                                                               | Purpose                                                                                                       |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| [**PROJECT_DIARY.md**](PROJECT_DIARY.md)                               | Complete project history, all training phases, research references, key learnings                             |
+| [**RESEARCH.md**](RESEARCH.md)                                         | Research findings, architecture comparisons, citations                                                        |
+| [**model-card.md**](model-card.md)                                     | HuggingFace model card with carbon footprint analysis                                                         |
+| [**docs/TRAINING_GUIDE.md**](docs/TRAINING_GUIDE.md)                   | Training guide with examples for base models and advanced methods (Phases 1-6)                                |
+| [**docs/REFACTORING_MIGRATION.md**](docs/REFACTORING_MIGRATION.md)     | Code consolidation guide: old scripts → new modules + CLI                                                     |
+| [**QUICKSTART_RESEARCH_DATASETS.md**](QUICKSTART_RESEARCH_DATASETS.md) | Get started with 6 research datasets in 5 minutes (MegaHan97K, DKDS, Chronicles, JaWildText, MCCD, Stroke DB) |
+| [**docs/RESEARCH_DATASETS_SETUP.md**](docs/RESEARCH_DATASETS_SETUP.md) | Complete research datasets guide: download, prepare, train with 6 datasets + Python API examples              |
 
 ### Quantization Documentation (4-bit BitsAndBytes)
 
@@ -31,7 +33,8 @@ This project trains multiple neural network architectures for Japanese kanji cha
 
 ```bash
 # 1. Clone repo and navigate to it
-git clone https://github.com/paazmaya/tsujimoto.git && cd tsujimoto
+git clone https://github.com/paazmaya/tsujimoto.git
+cd tsujimoto
 
 # 2. Create virtual environment
 python3 -m venv venv && source venv/bin/activate
@@ -157,6 +160,55 @@ uv run python scripts/prepare_dataset.py
 # Uses src/lib/metadata_generator module
 uv run python scripts/train.py --generate-metadata
 ```
+
+### 🔬 Research Datasets (Alternative to ETL)
+
+Extend training with 6 research datasets covering diverse domains: large-scale characters, degraded documents, historical evolution, scene text, calligraphy, and handwriting trajectories.
+
+**Available Datasets:**
+
+| Dataset             | Classes | Samples | Size   | Focus                              |
+| ------------------- | ------- | ------- | ------ | ---------------------------------- |
+| **MegaHan97K**      | 97,455  | ~500k   | ~5GB   | Large-scale Chinese characters     |
+| **DKDS**            | 3,831   | ~8k     | ~500MB | Degraded historical Kuzushiji      |
+| **Chronicles-OCR**  | ~2,400  | 2,800   | ~200MB | Historical character evolution     |
+| **JaWildText**      | 3,643   | ~1.12M  | ~800MB | Japanese scene text (in-the-wild)  |
+| **MCCD**            | ~3,500  | ~50k    | ~300MB | Calligraphic characters with style |
+| **Stroke Database** | 1,200   | 50,400  | ~400MB | Pen trajectory handwriting data    |
+
+**Quick Start** (3 commands):
+
+```ps1
+# 1. Download dataset
+python scripts/download_research_datasets.py --dataset megahan97k
+
+# 2. Prepare (standardize to 64×64)
+python scripts/prepare_research_dataset.py --dataset megahan97k
+
+# 3. Train with research dataset
+python scripts/train_modern.py --model cnn --dataset-name megahan97k --epochs 50
+```
+
+**More Options:**
+
+```ps1
+# List all available datasets
+python scripts/download_research_datasets.py --list
+
+# Download all research datasets
+python scripts/download_research_datasets.py --all
+
+# Train with large dataset subset (MegaHan97K only)
+python scripts/train_modern.py --model vit --dataset-name megahan97k \
+  --dataset-subset top-3000 --epochs 100
+
+# Use in Python code
+from src.lib.datasets import ResearchDatasetLoader
+loader = ResearchDatasetLoader("megahan97k", data_dir="data/research_datasets")
+train_loader = loader.get_dataloader(batch_size=32, split="train")
+```
+
+**Full Documentation**: See [QUICKSTART_RESEARCH_DATASETS.md](QUICKSTART_RESEARCH_DATASETS.md) for setup instructions and [docs/RESEARCH_DATASETS_SETUP.md](docs/RESEARCH_DATASETS_SETUP.md) for comprehensive guide with per-dataset details, API reference, and troubleshooting.
 
 ### Training
 
