@@ -4,26 +4,51 @@ This project trains multiple neural network architectures for Japanese kanji cha
 
 ## 📚 Documentation
 
-| Document                                         | Purpose                                                                           |
-| ------------------------------------------------ | --------------------------------------------------------------------------------- |
-| [**PROJECT_DIARY.md**](PROJECT_DIARY.md)        | Complete project history, all training phases, research references, key learnings |
-| [**RESEARCH.md**](RESEARCH.md)                  | Research findings, architecture comparisons, citations                            |
-| [**model-card.md**](model-card.md)              | HuggingFace model card with carbon footprint analysis                             |
-| [**docs/TRAINING_GUIDE.md**](docs/TRAINING_GUIDE.md) | Comprehensive training guide with examples for all 6 advanced methods |
-| [**docs/REFACTORING_MIGRATION.md**](docs/REFACTORING_MIGRATION.md) | Code consolidation guide: old scripts → new modules + CLI |
+| Document                                                           | Purpose                                                                           |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| [**PROJECT_DIARY.md**](PROJECT_DIARY.md)                           | Complete project history, all training phases, research references, key learnings |
+| [**RESEARCH.md**](RESEARCH.md)                                     | Research findings, architecture comparisons, citations                            |
+| [**model-card.md**](model-card.md)                                 | HuggingFace model card with carbon footprint analysis                             |
+| [**docs/TRAINING_GUIDE.md**](docs/TRAINING_GUIDE.md)               | Training guide with examples for base models and advanced methods (Phases 1-6)    |
+| [**docs/REFACTORING_MIGRATION.md**](docs/REFACTORING_MIGRATION.md) | Code consolidation guide: old scripts → new modules + CLI                         |
 
 ### Quantization Documentation (4-bit BitsAndBytes)
 
-| Document                                                     | Purpose                                 |
-| ------------------------------------------------------------ | --------------------------------------- |
-| [**4BIT_QUANTIZATION_GUIDE.md**](4BIT_QUANTIZATION_GUIDE.md) | Technical details, deployment checklist |
+| Document                                                               | Purpose                                 |
+| ---------------------------------------------------------------------- | --------------------------------------- |
+| [**docs/4BIT_QUANTIZATION_GUIDE.md**](docs/4BIT_QUANTIZATION_GUIDE.md) | Technical details, deployment checklist |
 
-### Implementation Summaries
+### Setup & Platform Guides
 
-| Document                                                     | Purpose                                 |
-| ------------------------------------------------------------ | --------------------------------------- |
-| [**IMPLEMENTATION_COMPLETE.md**](IMPLEMENTATION_COMPLETE.md) | Complete implementation reference and quick-start for all 6 methods |
-| [**PHASES_1-6_COMPLETE.md**](PHASES_1-6_COMPLETE.md)        | Implementation summary with statistics and next steps |
+| Document                                                             | Purpose                                                                     |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [**docs/MAC_SETUP_GUIDE.md**](docs/MAC_SETUP_GUIDE.md)               | Step-by-step Mac (Intel/Apple Silicon) setup and troubleshooting            |
+| [**docs/PLATFORM_COMPATIBILITY.md**](docs/PLATFORM_COMPATIBILITY.md) | Feature availability by platform (Mac, Linux, Windows) + performance matrix |
+
+## 🍎 Mac Users? Start Here!
+
+**Quick Setup (5 minutes)**:
+
+```bash
+# 1. Clone repo and navigate to it
+git clone https://github.com/paazmaya/tsujimoto.git && cd tsujimoto
+
+# 2. Create virtual environment
+python3 -m venv venv && source venv/bin/activate
+
+# 3. Install (works on Intel & Apple Silicon)
+pip install -e .
+
+# 4. Download dataset (first time only, ~7.5GB)
+python scripts/download_datasets.py --dataset etl9g
+
+# 5. Train! (2-3 min/epoch on Apple Silicon MPS, ~15 min/epoch on Intel CPU)
+python scripts/train_modern.py --epochs 30 --batch-size 64 --device auto
+```
+
+**Full Mac Setup Guide**: See [docs/MAC_SETUP_GUIDE.md](docs/MAC_SETUP_GUIDE.md) for detailed instructions, troubleshooting, and performance tips.
+
+**Platform Compatibility**: Check [docs/PLATFORM_COMPATIBILITY.md](docs/PLATFORM_COMPATIBILITY.md) for feature availability (e.g., 4-bit quantization not available on Mac).
 
 ## 📦 Reusable Library Modules
 
@@ -32,47 +57,49 @@ This project consolidates 31 scripts into 7 reusable modules under `src/lib/` (e
 ### Implementation Status
 
 ✅ **Phase 1-6 Complete**: All 6 advanced training methods fully implemented
-- **Total Implementation**: ~4,250 lines of production-ready code
-- **Lightning Modules**: 6 trainers added to `src/lib/lightning_module.py` (442 lines)
-- **CLI Integration**: 6 new subcommands in `scripts/train.py`
-- **Test Coverage**: 24 comprehensive tests (all passing)
-- **Documentation**: Detailed guide with examples in `docs/TRAINING_GUIDE.md`
+
+- **Total Implementation**: ~3,500 lines of production-ready code across 7 modules
+- **Lightning Modules**: 6 trainers for advanced methods in `src/lib/lightning_module.py` (700+ lines)
+- **CLI Variants**: 7 base model subcommands (cnn, rnn, vit, hiercode, hiercode_higita, qat) + 6 advanced method subcommands
+- **Test Coverage**: 476+ lines in test suite covering all phases (all passing)
+- **Documentation**: Examples in `docs/TRAINING_GUIDE.md` with API usage for all advanced methods
 
 ### Library Modules (`src/lib/`)
 
-| Module                          | Classes/Functions                              | Purpose                                      |
-| ------------------------------- | ---------------------------------------------- | -------------------------------------------- |
-| `character_mapping.py` (370 LOC) | `JISConverter`, `CharacterMappingGenerator`   | JIS ↔ Unicode conversion, character metadata |
-| `metadata_generator.py` (380 LOC) | `ChunkMetadataGenerator`, `RootMetadataGenerator`, `DatasetMetadataManager` | Dataset metadata generation for all ETL variants |
-| `conversion.py` (500 LOC)       | `quantize_model()`, `quantize_model_int8()`, `quantize_model_4bit_nf4()`, etc. | Unified quantization API (INT8, 4-bit NF4/FP4, BFloat16) |
-| `model_export.py` (480 LOC)     | `ModelExporter`                                | Multi-format export (PyTorch, ONNX, SafeTensors, GGUF) |
-| `onnx_analysis.py` (420 LOC)    | `ONNXModelAnalyzer`, `PoolingComparisonAnalyzer` | ONNX model inspection and comparison          |
-| `base_trainer.py` (900+ LOC)    | `BaseModelTrainer`, `CNNTrainer`, `RNNTrainer`, `ViTTrainer`, `HierCodeTrainer`, `QATTrainer`, `HierCodeHiGITATrainer`, `setup_trainer_for_model()` | Unified training loop for all architectures |
-| `setup_verification.py` (800+ LOC) | `SetupVerifier`                             | Environment and dataset validation           |
+| Module                             | Classes/Functions                                                                                                                                   | Purpose                                                  |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `character_mapping.py` (370 LOC)   | `JISConverter`, `CharacterMappingGenerator`                                                                                                         | JIS ↔ Unicode conversion, character metadata             |
+| `metadata_generator.py` (380 LOC)  | `ChunkMetadataGenerator`, `RootMetadataGenerator`, `DatasetMetadataManager`                                                                         | Dataset metadata generation for all ETL variants         |
+| `conversion.py` (500 LOC)          | `quantize_model()`, `quantize_model_int8()`, `quantize_model_4bit_nf4()`, etc.                                                                      | Unified quantization API (INT8, 4-bit NF4/FP4, BFloat16) |
+| `model_export.py` (480 LOC)        | `ModelExporter`                                                                                                                                     | Multi-format export (PyTorch, ONNX, SafeTensors, GGUF)   |
+| `onnx_analysis.py` (420 LOC)       | `ONNXModelAnalyzer`, `PoolingComparisonAnalyzer`                                                                                                    | ONNX model inspection and comparison                     |
+| `base_trainer.py` (900+ LOC)       | `BaseModelTrainer`, `CNNTrainer`, `RNNTrainer`, `ViTTrainer`, `HierCodeTrainer`, `QATTrainer`, `HierCodeHiGITATrainer`, `setup_trainer_for_model()` | Unified training loop for all architectures              |
+| `setup_verification.py` (800+ LOC) | `SetupVerifier`                                                                                                                                     | Environment and dataset validation                       |
 
 ### Advanced Training Methods (Phases 1-6) - New Modules
 
-| Module                              | Lines | Purpose                                      |
-| ----------------------------------- | -----:| -------------------------------------------- |
-| `hierarchical_retrieval.py` (450 LOC) | 450  | GL-HPN: Global-Local zero-shot character retrieval |
-| `dual_decoder.py` (500 LOC)         | 500  | DTRNet: Dual text-radical decoders for structural verification |
-| `degradation.py` (400 LOC)          | 400  | Synthetic document degradation (7 types: blur, stain, contrast, seal, warp, etc.) |
-| `restoration.py` (450 LOC)          | 450  | Document restoration: binarization (3 methods) + seal removal |
-| `trajectory_processing.py` (500 LOC) | 500 | Online handwriting trajectories: stroke extraction, RNN encoding, hybrid vision model |
-| `granular_encoders.py` (650 LOC)    | 650  | Multi-granular contrastive learning: stroke/radical/character hierarchical encoders |
-| `restoration_pipeline.py` (400 LOC) | 400  | End-to-end restoration pipeline: Detection→Restoration→Classification |
+| Module                                | Lines | Purpose                                                                               |
+| ------------------------------------- | ----: | ------------------------------------------------------------------------------------- |
+| `hierarchical_retrieval.py` (450 LOC) |   450 | GL-HPN: Global-Local zero-shot character retrieval                                    |
+| `dual_decoder.py` (500 LOC)           |   500 | DTRNet: Dual text-radical decoders for structural verification                        |
+| `degradation.py` (400 LOC)            |   400 | Synthetic document degradation (7 types: blur, stain, contrast, seal, warp, etc.)     |
+| `restoration.py` (450 LOC)            |   450 | Document restoration: binarization (3 methods) + seal removal                         |
+| `trajectory_processing.py` (500 LOC)  |   500 | Online handwriting trajectories: stroke extraction, RNN encoding, hybrid vision model |
+| `granular_encoders.py` (650 LOC)      |   650 | Multi-granular contrastive learning: stroke/radical/character hierarchical encoders   |
+| `restoration_pipeline.py` (400 LOC)   |   400 | End-to-end restoration pipeline: Detection→Restoration→Classification                 |
 
 ### Unified CLI Entry Points
 
-| Script                          | Consolidates                                | Purpose                            |
-| ------------------------------- | ------------------------------------------- | ---------------------------------- |
-| `scripts/convert_model.py`      | Quantization + multi-format export          | Model conversion + quantization    |
-| `scripts/verify_setup.py`       | Environment and dataset validation          | Environment verification          |
-| `scripts/analyze_model.py`      | ONNX model inspection and analysis          | ONNX model analysis                |
+| Script                     | Consolidates                       | Purpose                         |
+| -------------------------- | ---------------------------------- | ------------------------------- |
+| `scripts/convert_model.py` | Quantization + multi-format export | Model conversion + quantization |
+| `scripts/verify_setup.py`  | Environment and dataset validation | Environment verification        |
+| `scripts/analyze_model.py` | ONNX model inspection and analysis | ONNX model analysis             |
 
 ### Quick Library Usage Examples
 
 **Character Mapping:**
+
 ```python
 from src.lib.character_mapping import JISConverter
 char = JISConverter.jis_to_unicode(0x2421)  # Convert JIS → Unicode
@@ -80,12 +107,14 @@ strokes = JISConverter.estimate_stroke_count('亜')
 ```
 
 **Quantization:**
+
 ```python
 from src.lib.conversion import quantize_model
 quantized, metadata = quantize_model(model, "int8", "cpu")  # or "4bit_nf4", "4bit_fp4", "bfloat16"
 ```
 
 **Training:**
+
 ```python
 from src.lib.base_trainer import setup_trainer_for_model
 trainer = setup_trainer_for_model(model, train_loader, val_loader, optimizer, model_type="cnn")
@@ -93,6 +122,7 @@ history = trainer.train(num_epochs=30, early_stopping=True)
 ```
 
 **Environment Verification:**
+
 ```python
 from src.lib.setup_verification import SetupVerifier
 verifier = SetupVerifier()
@@ -165,14 +195,14 @@ uv run python scripts/train.py qat --epochs 25 --batch-size 32
 
 **6 research-backed training approaches** implemented for enhanced recognition accuracy and robustness:
 
-| Phase | Method | Purpose | Use Case |
-|-------|--------|---------|----------|
-| **1** | **GL-HPN** | Zero-shot character retrieval via global-local hierarchical coarse-to-fine retrieval | Rare/unseen characters, efficient inference (~50% faster) |
-| **2** | **DTRNet** | Dual text-radical decoders for structural verification and fake character detection | Malformed character detection, improved reliability |
-| **3** | **Degradation-Aware** | Synthetic document degradation (blur, stains, seals, warping) + restoration preprocessing | Robustness to real-world document quality variations |
-| **4** | **Trajectory** | Online handwriting stroke-level learning from pen trajectories | Writer-aware modeling, temporal pattern capture |
-| **5** | **Multi-Granular** | Hierarchical multi-level contrastive learning (stroke→radical→character) | Compositional understanding, improved generalization |
-| **6** | **Restoration Pipeline** | End-to-end detection→restoration→classification for degraded documents | Complete degraded document handling with learnable restoration |
+| Phase | Method                   | Purpose                                                                                   | Use Case                                                       |
+| ----- | ------------------------ | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **1** | **GL-HPN**               | Zero-shot character retrieval via global-local hierarchical coarse-to-fine retrieval      | Rare/unseen characters, efficient inference (~50% faster)      |
+| **2** | **DTRNet**               | Dual text-radical decoders for structural verification and fake character detection       | Malformed character detection, improved reliability            |
+| **3** | **Degradation-Aware**    | Synthetic document degradation (blur, stains, seals, warping) + restoration preprocessing | Robustness to real-world document quality variations           |
+| **4** | **Trajectory**           | Online handwriting stroke-level learning from pen trajectories                            | Writer-aware modeling, temporal pattern capture                |
+| **5** | **Multi-Granular**       | Hierarchical multi-level contrastive learning (stroke→radical→character)                  | Compositional understanding, improved generalization           |
+| **6** | **Restoration Pipeline** | End-to-end detection→restoration→classification for degraded documents                    | Complete degraded document handling with learnable restoration |
 
 **Implementation**: All phases are implemented as reusable modules in `src/lib/` with factory functions for flexible composition:
 
@@ -229,6 +259,7 @@ python scripts/train.py restoration_pipeline --epochs 30 --training-strategy end
 ```
 
 View all options for any method:
+
 ```bash
 python scripts/train.py glhpn --help
 python scripts/train.py dtrnet --help
@@ -294,14 +325,16 @@ module = RestorationPipelineLightningModule(pipeline, trainer, config)
 trainer.fit(module, train_loader, val_loader)
 ```
 
-**Documentation**: See [docs/TRAINING_GUIDE.md](docs/TRAINING_GUIDE.md) for complete examples and [IMPLEMENTATION_COMPLETE.md](IMPLEMENTATION_COMPLETE.md) for API reference and [PHASES_1-6_COMPLETE.md](PHASES_1-6_COMPLETE.md) for quick-start examples.
+**Documentation**: See [docs/TRAINING_GUIDE.md](docs/TRAINING_GUIDE.md) for complete examples and API usage for all 6 phases.
 
 **Testing**: Run comprehensive test suite to validate all phases:
+
 ```ps1
 uv run pytest tests/test_advanced_training_methods.py -v
 ```
 
 **Research Papers Implemented**:
+
 - ✅ GL-HPN (Cao et al., May 2026) - Zero-Shot Chinese Character Recognition via Global-Local Dual-Branch
 - ✅ DTRNet (Li et al., August 2026) - Dual Text-Radical Decoding for Handwritten Text
 - ✅ DKDS (Ju et al., 2025-2026) - Degraded Kuzushiji Documents with Seals + Restoration
@@ -378,11 +411,13 @@ This project uses **uv** for fast, reliable Python dependency management.
 ### Core Dependencies
 
 **Base Framework**:
+
 - `torch` - PyTorch deep learning framework
 - `torchvision` - Computer vision utilities (image transforms, datasets)
 - `pytorch-lightning` - High-level training orchestration
 
 **Advanced Training Methods** (new):
+
 - `albumentations >= 1.4.0` - Image augmentation and synthetic degradation
 - `pytorch-metric-learning >= 2.3.0` - Contrastive learning and metric losses
 - `ultralytics >= 8.3.0` - YOLOv8/v12 detection models
@@ -390,12 +425,14 @@ This project uses **uv** for fast, reliable Python dependency management.
 - `faiss-cpu >= 1.8.0` - Efficient similarity search for retrieval-based methods
 
 **Quantization & Export**:
+
 - `bitsandbytes` - 4-bit NF4/FP4 quantization (8-bit INT8 via PyTorch)
 - `onnx` - ONNX export and model inspection
 - `skl2onnx` - Scikit-learn ONNX conversion utilities
 - `safetensors` - Safe model serialization
 
 **Development**:
+
 - `pytest` - Testing framework
 - `ruff` - Fast Python linter and formatter
 - `black` - Code formatter
@@ -663,18 +700,30 @@ uv run python scripts/quantize_to_4bit_bitsandbytes.py --model-path training/cnn
 
 #### Installation
 
-```ps1
-# Core quantization tools
-uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+**Mac Users**: See [MAC_SETUP_GUIDE.md](MAC_SETUP_GUIDE.md) for step-by-step instructions with Mac-specific Python setup.
 
-# For INT8 quantization (included with PyTorch)
-# No additional installation needed
+```bash
+# Install PyTorch (works on all platforms: Mac CPU/MPS, Linux GPU, Windows GPU)
+uv pip install torch torchvision
 
-# For 4-bit quantization
-uv pip install bitsandbytes
+# Install the project and dependencies
+uv pip install -e .
 
-# Optional: For GPTQ support
-uv pip install auto-gptq
+# For 4-bit quantization (Linux/Windows GPU only, not available on Mac)
+# uv pip install bitsandbytes
+```
+
+**Platform-Specific PyTorch**:
+
+```bash
+# macOS (Intel/Apple Silicon - CPU, with MPS support on Apple Silicon)
+pip install torch torchvision
+
+# Linux with NVIDIA GPU
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# Windows with NVIDIA GPU
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ```
 
 **Custom Output Path**

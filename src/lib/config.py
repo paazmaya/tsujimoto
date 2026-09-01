@@ -128,9 +128,9 @@ class OptimizationConfig(BaseModel):
 
     # ========== DEVICE & LOGGING ==========
     device: str = Field(
-        default="cuda",
-        pattern="^(cuda|cpu)$",
-        description="Training device: cuda or cpu",
+        default="auto",
+        pattern="^(cuda|cpu|mps|auto)$",
+        description="Training device: cuda, cpu, mps (Apple Silicon), or auto (auto-detect)",
     )
     log_interval: int = Field(
         default=100,

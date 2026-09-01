@@ -143,8 +143,8 @@ class SetupVerifier:
                 "onnx",
                 "onnxruntime",
                 "safetensors",
-                "bitsandbytes",
             ]
+            # BitsAndBytes is optional (CUDA-only, not available on Mac)
 
         results = {}
         missing = []
@@ -160,6 +160,17 @@ class SetupVerifier:
             else:
                 missing.append(package)
 
+        # Check optional packages (don't fail if missing)
+        optional_packages = ["bitsandbytes"]  # Only available with CUDA
+        for package in optional_packages:
+            spec = importlib.util.find_spec(package)
+            available = spec is not None
+            results[package] = available
+            if available:
+                found.append(f"{package} (optional)")
+            else:
+                logger.debug(f"ℹ {package} not available (optional, CUDA-only)")
+
         logger.info(f"✓ Found {len(found)} dependencies: {', '.join(found)}")
         if missing:
             logger.warning(f"⚠ Missing {len(missing)} dependencies: {', '.join(missing)}")
@@ -167,15 +178,17 @@ class SetupVerifier:
         return results
 
     def verify_gpu_setup(self) -> Dict[str, Any]:
-        """Verify GPU/CUDA setup and availability.
+        """Verify GPU/CUDA/MPS setup and availability.
 
         Returns:
             Dictionary with GPU information:
             - cuda_available: Whether CUDA is available
-            - gpu_count: Number of GPUs
-            - gpu_models: List of GPU model names
-            - gpu_memory: Total GPU memory in GB
-            - gpu_memory_per_device: Memory per GPU
+            - mps_available: Whether Metal Performance Shaders (Mac) is available
+            - device_type: Primary device type (cuda, mps, or cpu)
+            - gpu_count: Number of GPUs (CUDA only)
+            - gpu_models: List of GPU model names (CUDA only)
+            - gpu_memory: Total GPU memory in GB (CUDA only)
+            - gpu_memory_per_device: Memory per GPU (CUDA only)
             - allocation_test_passed: Whether GPU memory allocation test passed
 
         """
@@ -183,8 +196,26 @@ class SetupVerifier:
 
         # CUDA availability
         results["cuda_available"] = torch.cuda.is_available()
+
+        # Metal Performance Shaders (Apple Silicon Mac support)
+        try:
+            results["mps_available"] = torch.backends.mps.is_available()
+        except AttributeError:
+            results["mps_available"] = False
+
+        # Determine primary device type
+        if results["cuda_available"]:
+            results["device_type"] = "cuda"
+            logger.info("✓ CUDA is available")
+        elif results["mps_available"]:
+            results["device_type"] = "mps"
+            logger.info("✓ Metal Performance Shaders (MPS) is available on Apple Silicon Mac")
+        else:
+            results["device_type"] = "cpu"
+            logger.warning("⚠ No GPU acceleration available, using CPU (training will be slower)")
+
+        # Early return if no CUDA (MPS/CPU don't need detailed GPU info)
         if not results["cuda_available"]:
-            logger.warning("⚠ CUDA not available, using CPU (training will be slower)")
             return results
 
         # GPU count

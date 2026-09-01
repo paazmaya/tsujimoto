@@ -640,7 +640,9 @@ def quantize_model_4bit_nf4(
         from bitsandbytes.nn import Linear4bit
     except ImportError as e:
         logger.error("❌ BitsAndBytes not installed: %s", e)
-        logger.info("   Install with: pip install bitsandbytes")
+        logger.info("   Note: BitsAndBytes requires CUDA (not available on Mac/CPU)")
+        logger.info("   Install with: pip install bitsandbytes (Linux/Windows with GPU only)")
+        logger.info("   For Mac: Use INT8 or BFloat16 quantization instead")
         raise
 
     model = model.to(device)
@@ -719,6 +721,9 @@ def quantize_model_4bit_fp4(
         from bitsandbytes.nn import Linear4bit
     except ImportError as e:
         logger.error("❌ BitsAndBytes not installed: %s", e)
+        logger.info("   Note: BitsAndBytes requires CUDA (not available on Mac/CPU)")
+        logger.info("   Install with: pip install bitsandbytes (Linux/Windows with GPU only)")
+        logger.info("   For Mac: Use INT8 or BFloat16 quantization instead")
         raise
 
     model = model.to(device)

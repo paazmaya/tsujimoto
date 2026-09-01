@@ -61,11 +61,11 @@ dependencies = [
   "typer>=0.9.0",
   "huggingface-hub>=0.21.0",
   # Phase 5-8: Advanced training methods
-  "albumentations>=1.4.0",  # Image degradation & augmentation (Phase 3)
-  "pytorch-metric-learning>=2.3.0",  # Contrastive learning (Phase 5)
-  "ultralytics>=8.3.0",  # YOLOv8/v12 detection (Phase 6)
-  "kornia>=0.7.0",  # Advanced image transformations (Phase 3, 6)
-  "faiss-cpu>=1.8.0",  # Efficient similarity search (Phase 1)
+  "albumentations>=1.4.0", # Image degradation & augmentation (Phase 3)
+  "pytorch-metric-learning>=2.3.0", # Contrastive learning (Phase 5)
+  "ultralytics>=8.3.0", # YOLOv8/v12 detection (Phase 6)
+  "kornia>=0.7.0", # Advanced image transformations (Phase 3, 6)
+  "faiss-cpu>=1.8.0", # Efficient similarity search (Phase 1)
 ]
 
 [project.optional-dependencies]
@@ -79,11 +79,15 @@ Homepage = "https://github.com/paazmaya/tsujimoto"
 Repository = "https://github.com/paazmaya/tsujimoto"
 Issues = "https://github.com/paazmaya/tsujimoto/issues"
 
-# PyTorch with CUDA support requires special index
+# PyTorch wheels: Platform-aware index selection
+# On Mac: uses CPU wheels (compatible with both Intel and Apple Silicon)
+# On Linux/Windows: uses CUDA 13.0 wheels for GPU support
+# Installation will auto-select based on platform and PyTorch version
+# For Mac with Metal Performance Shaders (MPS), torch CPU wheels still work
 [[tool.uv.index]]
-name = "torch"
+name = "torch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
-explicit = true
+explicit = false
 packages = ["torch", "torchvision"]
 
 [tool.ruff]

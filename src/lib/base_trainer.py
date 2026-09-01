@@ -542,10 +542,20 @@ class ViTTrainer(BaseModelTrainer):
         return nn.CrossEntropyLoss()
 
     def enable_mixed_precision(self) -> None:
-        """Enable automatic mixed precision training."""
+        """Enable automatic mixed precision training.
+
+        Uses device-aware mixed precision:
+        - CUDA: Uses torch.cuda.amp.GradScaler()
+        - MPS/CPU: Uses torch.amp.GradScaler() with device type detection
+        """
         self.use_mixed_precision = True
-        self.scaler = torch.cuda.amp.GradScaler()
-        logger.info("Mixed precision training enabled")
+        # Device-aware scaler initialization
+        if self.device == "cuda" and torch.cuda.is_available():
+            self.scaler = torch.cuda.amp.GradScaler()
+        else:
+            # For CPU/MPS: torch.amp.GradScaler works with device_type parameter
+            self.scaler = torch.amp.GradScaler(device_type="cpu")
+        logger.info("Mixed precision training enabled (device: %s)", self.device)
 
     def train_epoch(self) -> Tuple[float, float]:
         """Train one epoch with optional mixed precision.
@@ -562,10 +572,13 @@ class ViTTrainer(BaseModelTrainer):
         total_correct = 0
         total_samples = 0
 
+        # Determine device type for autocast
+        device_type = "cuda" if self.device == "cuda" else "cpu"
+
         for batch in self.train_loader:
             self.optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast():
+            with torch.autocast(device_type=device_type):
                 outputs, loss = self.forward_pass(batch)
 
             self.scaler.scale(loss).backward()
