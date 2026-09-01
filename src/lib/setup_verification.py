@@ -130,6 +130,9 @@ class SetupVerifier:
             Dictionary mapping package names to availability (True/False)
 
         """
+        # Track whether we're using custom packages vs default
+        using_custom_packages = packages is not None
+
         if packages is None:
             packages = [
                 "torch",
@@ -160,16 +163,17 @@ class SetupVerifier:
             else:
                 missing.append(package)
 
-        # Check optional packages (don't fail if missing)
-        optional_packages = ["bitsandbytes"]  # Only available with CUDA
-        for package in optional_packages:
-            spec = importlib.util.find_spec(package)
-            available = spec is not None
-            results[package] = available
-            if available:
-                found.append(f"{package} (optional)")
-            else:
-                logger.debug(f"ℹ {package} not available (optional, CUDA-only)")
+        # Only check optional packages when using default packages list
+        if not using_custom_packages:
+            optional_packages = ["bitsandbytes"]  # Only available with CUDA
+            for package in optional_packages:
+                spec = importlib.util.find_spec(package)
+                available = spec is not None
+                results[package] = available
+                if available:
+                    found.append(f"{package} (optional)")
+                else:
+                    logger.debug(f"ℹ {package} not available (optional, CUDA-only)")
 
         logger.info(f"✓ Found {len(found)} dependencies: {', '.join(found)}")
         if missing:

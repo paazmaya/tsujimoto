@@ -41,6 +41,7 @@ Functions:
 """
 
 import json
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -553,8 +554,8 @@ class ViTTrainer(BaseModelTrainer):
         if self.device == "cuda" and torch.cuda.is_available():
             self.scaler = torch.cuda.amp.GradScaler()
         else:
-            # For CPU/MPS: torch.amp.GradScaler works with device_type parameter
-            self.scaler = torch.amp.GradScaler(device_type="cpu")
+            # For CPU/MPS: use unified GradScaler without device_type parameter
+            self.scaler = torch.amp.GradScaler()
         logger.info("Mixed precision training enabled (device: %s)", self.device)
 
     def train_epoch(self) -> Tuple[float, float]:
@@ -680,14 +681,32 @@ class QATTrainer(BaseModelTrainer):
         return history
 
     def _enable_qat(self) -> None:
-        """Enable quantization-aware training (fake quantization)."""
-        self.model.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
-        torch.quantization.prepare_qat(self.model, inplace=True)
+        """Enable quantization-aware training (fake quantization).
+
+        Note: Uses torch.quantization API which is deprecated in favor of torchao.
+        Warnings are suppressed as dynamic quantization via torchao is not yet stable.
+        """
+        # Suppress torch.ao.quantization deprecation warning
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", category=DeprecationWarning, message=".*torch.ao.quantization.*"
+            )
+            self.model.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
+            torch.quantization.prepare_qat(self.model, inplace=True)
         logger.info("QAT (fake quantization) enabled")
 
     def _convert_to_quantized(self) -> None:
-        """Convert model to quantized after training."""
-        torch.quantization.convert(self.model, inplace=True)
+        """Convert model to quantized after training.
+
+        Note: Uses torch.quantization API which is deprecated in favor of torchao.
+        Warnings are suppressed as dynamic quantization via torchao is not yet stable.
+        """
+        # Suppress torch.ao.quantization deprecation warning
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", category=DeprecationWarning, message=".*torch.ao.quantization.*"
+            )
+            torch.quantization.convert(self.model, inplace=True)
         logger.info("Model converted to quantized state")
 
 

@@ -32,6 +32,7 @@ Example Usage:
     ... )
 """
 
+import warnings
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -176,12 +177,23 @@ class ModelOptimizer:
             raise
 
     def _quantize_dynamic(self, backend: str) -> nn.Module:
-        """Apply dynamic quantization."""
-        quantized_model = torch.quantization.quantize_dynamic(
-            self.model,
-            {nn.Linear, nn.LSTM, nn.GRU},
-            dtype=torch.qint8,
-        )
+        """Apply dynamic quantization.
+
+        Note: This uses the torch.quantization API which is deprecated in favor
+        of torchao. However, dynamic quantization via torchao is not yet stable,
+        so we keep the torch.quantization implementation with warnings suppressed.
+        """
+        # Suppress torch.ao.quantization deprecation warning (will be removed in torch 2.10)
+        # Migration path: https://github.com/pytorch/pytorch/issues/...
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", category=DeprecationWarning, message=".*torch.ao.quantization.*"
+            )
+            quantized_model = torch.quantization.quantize_dynamic(
+                self.model,
+                {nn.Linear, nn.LSTM, nn.GRU},
+                dtype=torch.qint8,
+            )
 
         logger.info(f"✓ Dynamic quantization applied (backend={backend})")
         return quantized_model
@@ -191,23 +203,33 @@ class ModelOptimizer:
         backend: str,
         calibration_loader: Optional[DataLoader],
     ) -> nn.Module:
-        """Apply static quantization with calibration."""
+        """Apply static quantization with calibration.
+
+        Note: This uses the torch.quantization API which is deprecated in favor
+        of torchao. However, for CPU-based training, torch.quantization remains
+        the most stable implementation. Warnings are suppressed.
+        """
         if calibration_loader is None:
             raise ValueError("calibration_loader required for static quantization")
 
         # Prepare model for static quantization
-        self.model.qconfig = torch.quantization.get_default_qconfig(backend)
-        torch.quantization.prepare(self.model, inplace=True)
+        # Suppress torch.ao.quantization deprecation warning
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", category=DeprecationWarning, message=".*torch.ao.quantization.*"
+            )
+            self.model.qconfig = torch.quantization.get_default_qconfig(backend)
+            torch.quantization.prepare(self.model, inplace=True)
 
-        # Calibrate on sample data
-        logger.info("Calibrating model on sample data...")
-        with torch.no_grad():
-            for batch, _ in calibration_loader:
-                batch = batch.to(self.device)
-                self.model(batch)
+            # Calibrate on sample data
+            logger.info("Calibrating model on sample data...")
+            with torch.no_grad():
+                for batch, _ in calibration_loader:
+                    batch = batch.to(self.device)
+                    self.model(batch)
 
-        # Convert to quantized model
-        torch.quantization.convert(self.model, inplace=True)
+            # Convert to quantized model
+            torch.quantization.convert(self.model, inplace=True)
 
         logger.info(f"✓ Static quantization applied (backend={backend})")
         return self.model

@@ -11,6 +11,7 @@ Provides reusable functions for:
 import json
 import logging
 import os
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple
@@ -334,7 +335,6 @@ def quantize_model_int8(
         >>> ratio = orig_size / quant_size
         >>> print(f"Quantization: {ratio:.1f}x compression")
     """
-    import warnings
 
     logger.info("🔄 Quantizing model to INT8 (dynamic)...")
 
