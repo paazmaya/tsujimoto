@@ -189,7 +189,6 @@ class TestAllConversionScriptsLoadable:
             "example_safetensors_usage",
             "prepare_dataset",
             "train",
-            "train_modern",
             "verify_setup",
             "analyze_model",
         ]

@@ -215,3 +215,6 @@ ETL*/
 *.safetensors
 models*
 training/
+data/
+lightning_logs/
+

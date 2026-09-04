@@ -227,7 +227,7 @@ class StrokeDatabaseHandler(DatasetFormatHandler):
                         try:
                             x, y, pen_state = struct.unpack("fff", data)
                             coords.append([x, y])
-                        except:
+                        except struct.error:
                             break
                     trajectory = np.array(coords)
 

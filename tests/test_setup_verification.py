@@ -272,18 +272,13 @@ class TestTrainingScriptsVerification:
         assert len(results) > 0
 
     def test_training_scripts_keys(self):
-        """Test training scripts have expected keys."""
+        """Test unified training script exists."""
         verifier = SetupVerifier(verbose=False)
         results = verifier.verify_training_scripts()
 
+        # Check for unified train.py (replaces individual scripts)
         expected_scripts = [
-            "train_cnn_model.py",
-            "train_rnn.py",
-            "train_vit.py",
-            "train_hiercode.py",
-            "train_qat.py",
-            "train_radical_rnn.py",
-            "train_hiercode_higita.py",
+            "train.py",  # Unified entry point with subcommands
         ]
 
         for script in expected_scripts:

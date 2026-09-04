@@ -187,7 +187,7 @@ class ResearchDatasetProcessor:
 
         # Process and chunk records
         logger.info("\n⚙️  Processing records...")
-        X_chunks = []
+        x_chunks = []
         y_chunks = []
         current_chunk_x = []
         current_chunk_y = []
@@ -211,7 +211,7 @@ class ResearchDatasetProcessor:
 
                 # Save chunk if full
                 if len(current_chunk_y) >= self.chunk_size:
-                    X_chunks.append(np.array(current_chunk_x, dtype=np.float32))
+                    x_chunks.append(np.array(current_chunk_x, dtype=np.float32))
                     y_chunks.append(np.array(current_chunk_y, dtype=np.int64))
                     current_chunk_x = []
                     current_chunk_y = []
@@ -221,16 +221,16 @@ class ResearchDatasetProcessor:
 
         # Save final chunk
         if current_chunk_y:
-            X_chunks.append(np.array(current_chunk_x, dtype=np.float32))
+            x_chunks.append(np.array(current_chunk_x, dtype=np.float32))
             y_chunks.append(np.array(current_chunk_y, dtype=np.int64))
 
         # Save chunks
-        logger.info(f"\n💾 Saving {len(X_chunks)} chunks...")
-        for chunk_idx, (X, y) in enumerate(
-            tqdm(zip(X_chunks, y_chunks), total=len(X_chunks), desc="Saving chunks")
+        logger.info(f"\n💾 Saving {len(x_chunks)} chunks...")
+        for chunk_idx, (_x, y) in enumerate(
+            tqdm(zip(x_chunks, y_chunks), total=len(x_chunks), desc="Saving chunks")
         ):
             chunk_file = output_dataset_dir / f"{dataset_name}_chunk_{chunk_idx:03d}.npz"
-            np.savez_compressed(chunk_file, X=X, y=y)
+            np.savez_compressed(chunk_file, X=_x, y=y)
 
         # Save metadata
         logger.info("\n📝 Saving metadata...")
@@ -250,8 +250,8 @@ class ResearchDatasetProcessor:
                 "validation": 0.1,
                 "test": 0.1,
             },
-            "num_chunks": len(X_chunks),
-            "chunk_files": [f"{dataset_name}_chunk_{i:03d}.npz" for i in range(len(X_chunks))],
+            "num_chunks": len(x_chunks),
+            "chunk_files": [f"{dataset_name}_chunk_{i:03d}.npz" for i in range(len(x_chunks))],
         }
 
         import json
@@ -265,7 +265,7 @@ class ResearchDatasetProcessor:
         logger.info("✓ Processing complete!")
         logger.info(f"  Samples: {total_samples}")
         logger.info(f"  Classes: {num_classes}")
-        logger.info(f"  Chunks: {len(X_chunks)}")
+        logger.info(f"  Chunks: {len(x_chunks)}")
         logger.info(f"  Output: {output_dataset_dir}")
         logger.info("=" * 70)
 
@@ -331,17 +331,17 @@ def main():
 Examples:
   # Process specific dataset
   python scripts/prepare_research_dataset.py --dataset megahan97k
-  
+
   # Process all datasets
   python scripts/prepare_research_dataset.py --all
-  
+
   # Reprocess (overwrite existing)
   python scripts/prepare_research_dataset.py --dataset dkds --force
-  
+
   # Custom output directory and settings
   python scripts/prepare_research_dataset.py --dataset chronicles_ocr \\
     --output-dir data/processed --target-size 128 --chunk-size 2000
-  
+
   # List available datasets
   python scripts/prepare_research_dataset.py --list
         """,

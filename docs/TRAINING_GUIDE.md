@@ -101,8 +101,7 @@ print(f"Sparsity: {stats['sparsity']:.2%}")
 ### Training
 
 ```bash
-python scripts/train_modern.py train \
-    --model cnn \
+uv run python scripts/train.py cnn \
     --epochs 100 \
     --batch-size 64 \
     --learning-rate 1e-3
@@ -111,18 +110,18 @@ python scripts/train_modern.py train \
 ### Validation
 
 ```bash
-python scripts/train_modern.py validate
+uv run python scripts/verify_setup.py
 ```
 
-### Show Configuration
+### Show Help
 
 ```bash
-python scripts/train_modern.py show-config --model cnn
+uv run python scripts/train.py cnn --help
 ```
 
 ## Tips & Best Practices
 
-- Always validate your setup first: `train_modern.py validate`
+- Always verify your setup first: `uv run python scripts/verify_setup.py`
 - Use early stopping to prevent overfitting
 - Monitor Tensorboard logs during training
 - Save model cards when uploading to Hub

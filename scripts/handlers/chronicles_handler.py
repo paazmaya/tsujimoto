@@ -56,6 +56,7 @@ class ChroniclesOCRHandler(DatasetFormatHandler):
             Path to dataset directory
         """
         logger.info("Chronicles-OCR download handled by download_research_datasets.py")
+        logger.info("Dataset is downloaded from Hugging Face: VirtualLUO/Chronicles-OCR")
         dataset_path = output_dir / "chronicles_ocr"
         dataset_path.mkdir(parents=True, exist_ok=True)
         return dataset_path
@@ -205,7 +206,7 @@ class ChroniclesOCRHandler(DatasetFormatHandler):
             self.manifest = DatasetManifest(
                 dataset_id="chronicles_ocr",
                 name="Chronicles-OCR",
-                source_url="https://github.com/VT-NLP/Chronicles",
+                source_url="https://huggingface.co/datasets/VirtualLUO/Chronicles-OCR",
                 format_type="images_directory",
                 num_classes=2400,  # Approximate unique characters
                 num_samples=2800,
@@ -216,7 +217,7 @@ class ChroniclesOCRHandler(DatasetFormatHandler):
                 extracted_size_mb=250,
                 tags=["historical", "cross-temporal", "evolution", "benchmark"],
                 year_published=2026,
-                papers=["Chronicles-OCR: VT-NLP"],
+                papers=["Chronicles-OCR: VirtualLUO"],
             )
 
         return self.manifest

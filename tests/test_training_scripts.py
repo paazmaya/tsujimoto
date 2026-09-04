@@ -1,157 +1,83 @@
 #!/usr/bin/env python3
-"""Unit tests for training scripts and model utilities."""
+"""Unit tests for unified training script and model utilities."""
 
 import pytest
 
 
-class TestTrainCNNModel:
-    """Tests for CNN training script."""
+class TestUnifiedTrainingScript:
+    """Tests for unified train.py script."""
 
-    def test_train_cnn_module_imports(self):
-        """Test that train_cnn_model module can be imported."""
+    def test_train_py_module_imports(self):
+        """Test that train.py module can be imported."""
         try:
-            from scripts import train_cnn_model
+            from scripts import train
 
-            assert train_cnn_model is not None
+            assert train is not None
         except ImportError:
-            pytest.skip("train_cnn_model requires additional dependencies")
+            pytest.skip("train.py requires additional dependencies")
 
-    def test_etl9g_dataset_class_exists(self):
-        """Test that ETL9GDataset class is available."""
+    def test_train_py_has_subcommands(self):
+        """Test that train.py has the expected subcommands."""
         try:
-            from scripts.train_cnn_model import ETL9GDataset
+            import click
 
-            assert ETL9GDataset is not None
-        except ImportError:
-            pytest.skip("ETL9GDataset not available")
+            from scripts.train import train
 
-    def test_etl9g_dataset_initialization(self):
-        """Test ETL9GDataset can be initialized with data."""
-        try:
-            import numpy as np
-            from scripts.train_cnn_model import ETL9GDataset
+            # train should be a click group with subcommands
+            assert isinstance(train, click.Group)
 
-            X = np.random.rand(10, 64, 64).astype(np.float32)  # noqa: N806
-            y = np.random.randint(0, 43427, 10).astype(np.int64)
-
-            dataset = ETL9GDataset(X, y, augment=False)
-            assert len(dataset) == 10
-
-        except ImportError:
-            pytest.skip("Dependencies not available")
-
-    def test_etl9g_dataset_getitem(self):
-        """Test ETL9GDataset __getitem__ method."""
-        try:
-            import numpy as np
-            from scripts.train_cnn_model import ETL9GDataset
-
-            X = np.random.rand(5, 64, 64).astype(np.float32)  # noqa: N806
-            y = np.array([0, 1, 2, 3, 4], dtype=np.int64)
-
-            dataset = ETL9GDataset(X, y)
-            image, label = dataset[0]
-
-            assert image is not None
-            assert label is not None
-
-        except ImportError:
-            pytest.skip("Dependencies not available")
-
-
-class TestTrainHierCode:
-    """Tests for HierCode training script."""
-
-    def test_train_hiercode_module_imports(self):
-        """Test that train_hiercode module can be imported."""
-        try:
-            from scripts import train_hiercode
-
-            assert train_hiercode is not None
-        except ImportError:
-            pytest.skip("train_hiercode requires dependencies")
-
-    def test_train_hiercode_has_main(self):
-        """Test that train_hiercode has main entry point."""
-        try:
-            from scripts.train_hiercode import main
-
-            assert main is not None
-            assert callable(main)
+            # Check for key subcommands
+            subcommands = list(train.commands.keys())
+            expected = ["cnn", "rnn", "vit", "hiercode", "qat", "hiercode_higita"]
+            for cmd in expected:
+                assert cmd in subcommands, f"Missing subcommand: {cmd}"
         except (ImportError, AttributeError):
-            pytest.skip("main function not available")
+            pytest.skip("train.py structure not available")
 
-
-class TestTrainHierCodeHigita:
-    """Tests for HierCode HiGITA training script."""
-
-    def test_train_hiercode_higita_module_imports(self):
-        """Test that train_hiercode_higita module can be imported."""
+    def test_train_py_cnn_subcommand_exists(self):
+        """Test CNN subcommand exists."""
         try:
-            from scripts import train_hiercode_higita
+            from scripts.train import train
 
-            assert train_hiercode_higita is not None
-        except ImportError:
-            pytest.skip("train_hiercode_higita requires dependencies")
-
-    def test_train_hiercode_higita_has_classes(self):
-        """Test that train_hiercode_higita defines expected classes."""
-        try:
-            from scripts.train_hiercode_higita import ImageEncoder, TextEncoder
-
-            assert ImageEncoder is not None
-            assert TextEncoder is not None
+            assert "cnn" in train.commands
         except (ImportError, AttributeError):
-            pytest.skip("Expected classes not found")
+            pytest.skip("CNN subcommand not available")
 
-
-class TestTrainVisionTransformer:
-    """Tests for Vision Transformer training script."""
-
-    def test_train_vit_module_imports(self):
-        """Test that train_vit module can be imported."""
+    def test_train_py_rnn_subcommand_exists(self):
+        """Test RNN subcommand exists."""
         try:
-            from scripts import train_vit
+            from scripts.train import train
 
-            assert train_vit is not None
-        except ImportError:
-            pytest.skip("train_vit requires dependencies")
-
-
-class TestTrainRadicalRNN:
-    """Tests for Radical RNN training script."""
-
-    def test_train_radical_rnn_module_imports(self):
-        """Test that train_radical_rnn module can be imported."""
-        try:
-            from scripts import train_radical_rnn
-
-            assert train_radical_rnn is not None
-        except ImportError:
-            pytest.skip("train_radical_rnn requires dependencies")
-
-
-class TestTrainQuantizationAware:
-    """Tests for QAT training script."""
-
-    def test_train_qat_module_imports(self):
-        """Test that train_qat module can be imported."""
-        try:
-            from scripts import train_qat
-
-            assert train_qat is not None
-        except ImportError:
-            pytest.skip("train_qat requires dependencies")
-
-    def test_train_qat_has_main(self):
-        """Test that train_qat has main entry point."""
-        try:
-            from scripts.train_qat import main
-
-            assert main is not None
-            assert callable(main)
+            assert "rnn" in train.commands
         except (ImportError, AttributeError):
-            pytest.skip("main function not available")
+            pytest.skip("RNN subcommand not available")
+
+    def test_train_py_vit_subcommand_exists(self):
+        """Test ViT subcommand exists."""
+        try:
+            from scripts.train import train
+
+            assert "vit" in train.commands
+        except (ImportError, AttributeError):
+            pytest.skip("ViT subcommand not available")
+
+    def test_train_py_hiercode_subcommand_exists(self):
+        """Test HierCode subcommand exists."""
+        try:
+            from scripts.train import train
+
+            assert "hiercode" in train.commands
+        except (ImportError, AttributeError):
+            pytest.skip("HierCode subcommand not available")
+
+    def test_train_py_qat_subcommand_exists(self):
+        """Test QAT subcommand exists."""
+        try:
+            from scripts.train import train
+
+            assert "qat" in train.commands
+        except (ImportError, AttributeError):
+            pytest.skip("QAT subcommand not available")
 
 
 class TestMeasureCO2:

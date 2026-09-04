@@ -36,13 +36,26 @@ logger = setup_logger(__name__)
 RESEARCH_DATASETS: Dict[str, Dict] = {
     "megahan97k": {
         "name": "MegaHan97K",
-        "url": "https://github.com/SCUT-DLVCLab/MegaHan97K/releases/download/v1.0/megahan97k_v1.tar.gz",
+        "url": None,  # Manual download required - no GitHub releases provided
         "size_mb": 5000,
         "description": "Large-scale Chinese character dataset with 97,455 classes",
-        "format": "tar.gz",
-        "checksum": None,  # Will be verified after download
+        "format": "tar.gz or zip",
+        "checksum": None,
         "tags": ["zero-shot", "chinese", "large-scale"],
-        "notes": "Download requires ~5GB space. Consider bandwidth before downloading.",
+        "manual_download": True,
+        "application_url": "http://121.41.49.212:9000/",
+        "sources": {
+            "general_ccr": "Baiduyun: k4ch / OneDrive",
+            "zero_shot_ccr": "Baiduyun: bxde / OneDrive",
+        },
+        "notes": (
+            "⚠️  MANUAL DOWNLOAD REQUIRED:\n"
+            "  1. Apply at: http://121.41.49.212:9000/\n"
+            "  2. Download from Baiduyun (k4ch) or OneDrive after approval\n"
+            "  3. Extract with password provided in approval email\n"
+            "  4. Place extracted data in: data/research_datasets/megahan97k/\n"
+            "  See: https://github.com/SCUT-DLVCLab/MegaHan97K#download"
+        ),
     },
     "dkds": {
         "name": "DKDS",
@@ -56,23 +69,25 @@ RESEARCH_DATASETS: Dict[str, Dict] = {
     },
     "chronicles_ocr": {
         "name": "Chronicles-OCR",
-        "url": "https://github.com/VT-NLP/Chronicles/releases/download/v1.0/chronicles_ocr.zip",
+        "url": "huggingface://VirtualLUO/Chronicles-OCR",
         "size_mb": 200,
         "description": "Cross-temporal Chinese character recognition benchmark (historical evolution)",
-        "format": "zip",
+        "format": "huggingface",
         "checksum": None,
         "tags": ["historical", "cross-temporal", "evolution", "benchmark"],
-        "notes": "Tests visual perception across 7 historical Chinese scripts.",
+        "notes": "Tests visual perception across 7 historical Chinese scripts. Downloaded from Hugging Face.",
+        "hf_repo": "VirtualLUO/Chronicles-OCR",
     },
     "jawildtext": {
         "name": "JaWildText",
-        "url": "https://github.com/maeda-ltl/jawildtext/releases/download/v1.0/jawildtext.zip",
+        "url": "huggingface://llm-jp/jawildtext",
         "size_mb": 800,
         "description": "Japanese scene text understanding benchmark (in-the-wild)",
-        "format": "zip",
+        "format": "huggingface",
         "checksum": None,
         "tags": ["japanese", "scene-text", "vqa", "in-the-wild"],
-        "notes": "Real-world Japanese text from images with diverse layouts.",
+        "notes": "Real-world Japanese text from images with diverse layouts. Downloaded from Hugging Face.",
+        "hf_repo": "llm-jp/jawildtext",
     },
     "mccd": {
         "name": "MCCD",
@@ -93,6 +108,39 @@ RESEARCH_DATASETS: Dict[str, Dict] = {
         "checksum": None,
         "tags": ["trajectory", "online-handwriting", "stroke-level"],
         "notes": "Pen trajectory data for sequence models. ~50MB per writer.",
+    },
+    "kanji_full": {
+        "name": "Kanji Full",
+        "url": "huggingface://epts/kanji-full",
+        "size_mb": 150,
+        "description": "Comprehensive kanji character dataset with full coverage",
+        "format": "huggingface",
+        "checksum": None,
+        "tags": ["kanji", "japanese", "character-recognition"],
+        "notes": "Full kanji character dataset from EPTS. Downloaded from Hugging Face.",
+        "hf_repo": "epts/kanji-full",
+    },
+    "kanji_dataset_v3": {
+        "name": "Kanji Dataset v3",
+        "url": "huggingface://Ayphoss/kanji-dataset-v3",
+        "size_mb": 200,
+        "description": "Kanji character dataset version 3 with expanded coverage",
+        "format": "huggingface",
+        "checksum": None,
+        "tags": ["kanji", "japanese", "character-recognition", "v3"],
+        "notes": "Version 3 of kanji dataset from Ayphoss with improved coverage. Downloaded from Hugging Face.",
+        "hf_repo": "Ayphoss/kanji-dataset-v3",
+    },
+    "kanji": {
+        "name": "Kanji",
+        "url": "huggingface://jmonas/kanji",
+        "size_mb": 100,
+        "description": "Kanji character dataset with diverse writing styles",
+        "format": "huggingface",
+        "checksum": None,
+        "tags": ["kanji", "japanese", "character-recognition", "styles"],
+        "notes": "Kanji dataset from jmonas with diverse writing styles. Downloaded from Hugging Face.",
+        "hf_repo": "jmonas/kanji",
     },
 }
 
@@ -146,6 +194,36 @@ class ResearchDatasetDownloader:
         logger.info("=" * 70)
         logger.info(f"Description: {config['description']}")
         logger.info(f"Size: ~{config['size_mb']}MB")
+
+        # Handle Hugging Face datasets
+        if config.get("format") == "huggingface":
+            return self._download_huggingface_dataset(dataset_name, config, force)
+
+        # Handle manual downloads
+        if config.get("manual_download"):
+            logger.warning("⚠️  MANUAL DOWNLOAD REQUIRED")
+            logger.info(f"Application URL: {config.get('application_url')}")
+            if config.get("sources"):
+                logger.info("Download sources (after approval):")
+                for source_name, source_url in config["sources"].items():
+                    logger.info(f"  - {source_name}: {source_url}")
+            if config.get("notes"):
+                logger.warning(config["notes"])
+
+            # Check if data already exists locally
+            dataset_dir = self.output_dir / dataset_name
+            if dataset_dir.exists() and list(dataset_dir.glob("*")):
+                logger.info(f"✓ Dataset found at {dataset_dir}")
+                return True
+            else:
+                logger.error(f"Dataset not found at {dataset_dir}")
+                logger.info(f"Please download manually and extract to: {dataset_dir}")
+                return False
+
+        if config["url"] is None:
+            logger.error("No download URL provided for this dataset")
+            return False
+
         logger.info(f"URL: {config['url']}")
         if config.get("notes"):
             logger.warning(f"⚠️  {config['notes']}")
@@ -177,6 +255,74 @@ class ResearchDatasetDownloader:
                 logger.warning(f"⚠️  Failed to extract {output_path}")
 
         return True
+
+    def _download_huggingface_dataset(
+        self,
+        dataset_name: str,
+        config: Dict,
+        force: bool = False,
+    ) -> bool:
+        """
+        Download dataset from Hugging Face.
+
+        Args:
+            dataset_name: Dataset identifier
+            config: Dataset configuration
+            force: If True, re-download even if exists
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from datasets import load_dataset
+
+            dataset_dir = self.output_dir / dataset_name
+
+            # Check if already downloaded
+            if dataset_dir.exists() and list(dataset_dir.glob("*")) and not force:
+                logger.info(f"✓ Dataset already exists at {dataset_dir}")
+                return True
+
+            dataset_dir.mkdir(parents=True, exist_ok=True)
+
+            hf_repo = config.get("hf_repo")
+            if not hf_repo:
+                logger.error("No Hugging Face repository specified in config")
+                return False
+
+            logger.info(f"Loading dataset from Hugging Face: {hf_repo}")
+
+            # Load and cache dataset
+            load_dataset(hf_repo, cache_dir=str(dataset_dir), trust_remote_code=True)
+
+            # Save dataset info
+            info_file = dataset_dir / "dataset_info.json"
+            import json
+
+            with open(info_file, "w") as f:
+                json.dump(
+                    {
+                        "name": config["name"],
+                        "description": config["description"],
+                        "source": hf_repo,
+                        "tags": config.get("tags", []),
+                    },
+                    f,
+                    indent=2,
+                )
+
+            logger.info("✓ Successfully loaded dataset from Hugging Face")
+            logger.info(f"✓ Cached at: {dataset_dir}")
+
+            return True
+
+        except ImportError:
+            logger.error("The 'datasets' library is not installed")
+            logger.info("Install it with: pip install datasets")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to download Hugging Face dataset: {e}")
+            return False
 
     def download_all(self, force: bool = False, extract: bool = True) -> Dict[str, bool]:
         """
@@ -234,12 +380,22 @@ class ResearchDatasetDownloader:
                 import zipfile
 
                 with zipfile.ZipFile(archive_path, "r") as zf:
-                    zf.extractall(extract_dir)
+                    # Safely extract with path filtering
+                    for member in zf.namelist():
+                        if member.startswith("/") or ".." in member:
+                            logger.warning(f"Skipping potentially unsafe path: {member}")
+                            continue
+                        zf.extract(member, extract_dir)
             elif format_type == "tar.gz":
                 import tarfile
 
                 with tarfile.open(archive_path, "r:gz") as tf:
-                    tf.extractall(extract_dir)
+                    # Safely extract with path filtering
+                    for member in tf.getmembers():
+                        if member.name.startswith("/") or ".." in member.name:
+                            logger.warning(f"Skipping potentially unsafe path: {member.name}")
+                            continue
+                        tf.extract(member, extract_dir)
             else:
                 logger.warning(f"Unsupported archive format: {format_type}")
                 return False
@@ -258,10 +414,18 @@ class ResearchDatasetDownloader:
 
         for dataset_id, config in RESEARCH_DATASETS.items():
             logger.info(f"\n{dataset_id.upper()}")
+            if config.get("manual_download"):
+                logger.warning("  [MANUAL DOWNLOAD REQUIRED]")
             logger.info(f"  Name: {config['name']}")
             logger.info(f"  Description: {config['description']}")
             logger.info(f"  Size: ~{config['size_mb']}MB")
             logger.info(f"  Tags: {', '.join(config['tags'])}")
+            if config.get("application_url"):
+                logger.info(f"  Apply: {config['application_url']}")
+            if config.get("sources"):
+                logger.info("  Sources:")
+                for source_name, source_url in config["sources"].items():
+                    logger.info(f"    - {source_name}: {source_url}")
             if config.get("notes"):
                 logger.info(f"  Notes: {config['notes']}")
 
@@ -287,6 +451,58 @@ class ResearchDatasetDownloader:
 
         return results
 
+    def setup_local_dataset(self, dataset_name: str, local_path: Path) -> bool:
+        """
+        Set up a locally-available dataset (for manual downloads).
+
+        Supports:
+        - Direct dataset directories
+        - Compressed archives (tar.gz, zip)
+
+        Args:
+            dataset_name: Dataset identifier
+            local_path: Path to local file or directory
+
+        Returns:
+            True if successful
+        """
+        if dataset_name not in RESEARCH_DATASETS:
+            logger.error(f"Unknown dataset: {dataset_name}")
+            return False
+
+        RESEARCH_DATASETS[dataset_name]
+        local_path = Path(local_path)
+
+        if not local_path.exists():
+            logger.error(f"Local path does not exist: {local_path}")
+            return False
+
+        dataset_dir = self.output_dir / dataset_name
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        # If local path is a directory, assume it's already extracted
+        if local_path.is_dir():
+            logger.info(f"Using directory: {local_path}")
+            # Copy contents if needed, or just verify structure
+            logger.info(f"Dataset directory: {dataset_dir}")
+            return True
+
+        # If it's a file, extract it
+        if local_path.is_file():
+            # Determine format
+            if local_path.suffix == ".gz" or str(local_path).endswith(".tar.gz"):
+                file_format = "tar.gz"
+            elif local_path.suffix == ".zip":
+                file_format = "zip"
+            else:
+                logger.error(f"Unsupported file format: {local_path.suffix}")
+                return False
+
+            logger.info(f"Extracting {local_path} to {dataset_dir}")
+            return self._extract_dataset(local_path, file_format)
+
+        return False
+
 
 # ============================================================================
 # CLI INTERFACE
@@ -303,18 +519,21 @@ def main():
 Examples:
   # Download specific dataset
   python scripts/download_research_datasets.py --dataset megahan97k
-  
+
   # Download all research datasets
   python scripts/download_research_datasets.py --all
-  
+
   # Force re-download
   python scripts/download_research_datasets.py --dataset dkds --force
-  
+
   # List available datasets
   python scripts/download_research_datasets.py --list
-  
+
   # Verify downloaded datasets
   python scripts/download_research_datasets.py --verify
+
+  # Set up dataset from local file (for manually downloaded data like MegaHan97K)
+  python scripts/download_research_datasets.py --dataset megahan97k --setup-local /path/to/megahan97k.tar.gz
         """,
     )
 
@@ -351,8 +570,14 @@ Examples:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("data/research_datasets"),
-        help="Output directory for downloads (default: data/research_datasets)",
+        default=Path("dataset/research_datasets"),
+        help="Output directory for downloads (default: dataset/research_datasets)",
+    )
+    parser.add_argument(
+        "--setup-local",
+        type=str,
+        metavar="LOCAL_PATH",
+        help="Set up dataset from local file/directory (use with --dataset)",
     )
 
     args = parser.parse_args()
@@ -376,6 +601,14 @@ Examples:
             extract=not args.no_extract,
         )
         return 0 if all(results.values()) else 1
+
+    # Handle --setup-local
+    if args.setup_local:
+        if not args.dataset:
+            logger.error("--setup-local requires --dataset")
+            return 1
+        success = downloader.setup_local_dataset(args.dataset, args.setup_local)
+        return 0 if success else 1
 
     # Handle --dataset
     if args.dataset:

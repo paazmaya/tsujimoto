@@ -110,7 +110,12 @@ except ImportError:
     pass
 
 try:
-    from .datasets import KanjiDatasetLoader, create_dataset_loader
+    from .datasets import KanjiDatasetLoader, ResearchDatasetLoader, create_dataset_loader
+except ImportError:
+    pass
+
+try:
+    from .dataset_router import DatasetRouter, create_dataset_loaders
 except ImportError:
     pass
 
@@ -237,6 +242,9 @@ __all__ = [
     # Datasets (NEW)
     "KanjiDatasetLoader",
     "create_dataset_loader",
+    "ResearchDatasetLoader",
+    "DatasetRouter",
+    "create_dataset_loaders",
     # CLI (NEW)
     "create_app",
     "main_app",

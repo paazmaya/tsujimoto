@@ -46,6 +46,7 @@ class JaWildTextHandler(DatasetFormatHandler):
             Path to dataset directory
         """
         logger.info("JaWildText download handled by download_research_datasets.py")
+        logger.info("Dataset is downloaded from Hugging Face: llm-jp/jawildtext")
         dataset_path = output_dir / "jawildtext"
         dataset_path.mkdir(parents=True, exist_ok=True)
         return dataset_path
@@ -217,7 +218,7 @@ class JaWildTextHandler(DatasetFormatHandler):
             self.manifest = DatasetManifest(
                 dataset_id="jawildtext",
                 name="JaWildText",
-                source_url="https://github.com/maeda-ltl/jawildtext",
+                source_url="https://huggingface.co/datasets/llm-jp/jawildtext",
                 format_type="images_with_annotations_json",
                 num_classes=3643,
                 num_samples=1120000,

@@ -87,7 +87,12 @@ class MegaHan97KHandler(DatasetFormatHandler):
         try:
             logger.info(f"Extracting {archive_path} to {dataset_dir}")
             with tarfile.open(archive_path, "r:gz") as tf:
-                tf.extractall(dataset_dir)
+                # Safely extract with path filtering
+                for member in tf.getmembers():
+                    if member.name.startswith("/") or ".." in member.name:
+                        logger.warning(f"Skipping unsafe path: {member.name}")
+                        continue
+                    tf.extract(member, dataset_dir)
             logger.info("✓ Extracted MegaHan97K")
             return dataset_dir
         except Exception as e:
@@ -146,14 +151,14 @@ class MegaHan97KHandler(DatasetFormatHandler):
         for npz_file in npz_files:
             try:
                 data = np.load(npz_file)
-                X = data["X"]  # Images
+                x = data["X"]  # Images
                 y = data["y"]  # Labels
 
                 for i in range(len(y)):
                     if total >= limit:
                         break
 
-                    records.append((X[i], y[i]))
+                    records.append((x[i], y[i]))
                     total += 1
 
                 if total >= limit:

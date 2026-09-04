@@ -137,8 +137,126 @@ def train(ctx):
 @add_image_options
 @add_checkpoint_dir_option("training/cnn/checkpoints")
 def cnn(**kwargs):
-    """Train Lightweight CNN model for Kanji recognition."""
-    _call_variant_main(train_cnn_model, kwargs)
+    """Train Lightweight CNN model for Kanji recognition.
+
+    Supports both ETL and research datasets:
+    - ETL: etl6, etl7, etl8g, etl9g, combined_all_etl
+    - Research: kanji_full, kanji_dataset_v3, kanji, megahan97k, dkds, etc.
+
+    Examples:
+        python scripts/train.py cnn --dataset kanji_full --epochs 30
+        python scripts/train.py cnn --dataset etl9g --epochs 100
+    """
+    import traceback
+
+    import torch
+
+    from src.lib.base_trainer import setup_trainer_for_model
+    from src.lib.datasets import KanjiDatasetLoader, ResearchDatasetLoader
+    from src.lib.models import LightweightKanjiNet
+
+    # Extract parameters
+    dataset_name = kwargs.pop("dataset_name", None) or "etl9g"
+    epochs = kwargs.pop("epochs", 30)
+    batch_size = kwargs.pop("batch_size", 32)
+    learning_rate = kwargs.pop("learning_rate", 0.001)
+    checkpoint_dir = kwargs.pop("checkpoint_dir")
+    data_dir = kwargs.pop("data_dir", "dataset")
+    image_size = kwargs.pop("image_size", 64)
+    num_classes_arg = kwargs.pop("num_classes", None)
+
+    click.echo(f"Training CNN on dataset: {dataset_name}")
+    click.echo(f"Using data directory: {data_dir}")
+
+    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        click.echo(f"Using device: {device}")
+
+        # Load dataset
+        click.echo(f"Loading {dataset_name} dataset...")
+
+        # Determine if it's ETL or research dataset
+        etl_datasets = ["etl6", "etl7", "etl8g", "etl9g", "combined_all_etl"]
+        if dataset_name in etl_datasets:
+            loader = KanjiDatasetLoader(
+                dataset_name=dataset_name,
+                cache_dir=data_dir,
+                num_workers=4,
+                offline=True,  # Require local cache, no network
+            )
+            num_classes = num_classes_arg or 3036  # ETL9G default
+        else:
+            loader = ResearchDatasetLoader(
+                dataset_name=dataset_name,
+                data_dir=Path(data_dir),
+            )
+            num_classes = (
+                num_classes_arg
+                or (loader.num_classes if hasattr(loader, "num_classes") else 3036)
+            )
+
+        # Get data loaders (try different split names)
+        train_loader = loader.get_dataloader("train", batch_size=batch_size)
+
+        # Try to get validation loader (different datasets may have different split names)
+        val_loader = None
+        val_split = None
+        for split_name in ["validation", "val", "test"]:
+            try:
+                val_loader = loader.get_dataloader(
+                    split_name, batch_size=batch_size * 2
+                )
+                val_split = split_name
+                break
+            except Exception:  # noqa: BLE001, S110
+                pass
+
+        if val_loader is None:
+            click.echo("Warning: No validation split found, using test split for validation")
+            val_loader = train_loader  # Fallback to training data
+
+        click.echo("  ✓ Loaded training data")
+        if val_split:
+            click.echo(f"  ✓ Loaded {val_split} data")
+
+        # Create model
+        click.echo("Creating CNN model...")
+        model = LightweightKanjiNet(
+            num_classes=num_classes,
+            input_channels=1,
+            image_size=image_size,
+        ).to(device)
+
+        click.echo(f"  ✓ Model created with {num_classes} classes")
+
+        # Create optimizer
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=learning_rate,
+            weight_decay=1e-4,
+        )
+
+        # Setup trainer
+        trainer = setup_trainer_for_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            device=str(device),
+            model_type="cnn",
+            checkpoint_dir=checkpoint_dir,
+            num_classes=num_classes,
+            image_size=image_size,
+        )
+
+        # Train
+        click.echo(f"Starting training for {epochs} epochs...")
+        trainer.train(num_epochs=epochs)
+        click.echo("✓ Training completed successfully!")
+    except Exception as e:
+        click.echo(f"✗ Training failed: {e}", err=True)
+        traceback.print_exc()
+        raise
 
 
 @train.command()
@@ -157,11 +275,118 @@ def cnn(**kwargs):
 @click.option("--temperature", type=float, default=0.1, help="Gumbel-softmax temperature")
 def hiercode(**kwargs):
     """Train HierCode (Hierarchical Codebook) model."""
-    _call_variant_main(train_hiercode, kwargs)
+    import torch
+
+    from src.lib.base_trainer import setup_trainer_for_model
+    from src.lib.datasets import KanjiDatasetLoader, ResearchDatasetLoader
+    from src.lib.models import HierCodeNet
+
+    # Extract parameters
+    dataset_name = kwargs.pop("dataset_name", None) or "etl9g"
+    epochs = kwargs.pop("epochs", 30)
+    batch_size = kwargs.pop("batch_size", 32)
+    learning_rate = kwargs.pop("learning_rate", 0.001)
+    checkpoint_dir = kwargs.pop("checkpoint_dir")
+    data_dir = kwargs.pop("data_dir", "dataset")
+    num_classes_arg = kwargs.pop("num_classes", None)
+    image_size = kwargs.pop("image_size", 64)
+    codebook_total_size = kwargs.pop("codebook_total_size", 1024)
+
+    click.echo(f"Training HierCode on dataset: {dataset_name}")
+    click.echo(f"Using data directory: {data_dir}")
+
+    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        click.echo(f"Using device: {device}")
+
+        # Load dataset
+        click.echo(f"Loading {dataset_name} dataset...")
+        etl_datasets = ["etl6", "etl7", "etl8g", "etl9g", "combined_all_etl"]
+        if dataset_name in etl_datasets:
+            loader = KanjiDatasetLoader(
+                dataset_name=dataset_name,
+                cache_dir=data_dir,
+                num_workers=4,
+                offline=True,  # Require local cache, no network
+            )
+            num_classes = num_classes_arg or 3036
+        else:
+            loader = ResearchDatasetLoader(
+                dataset_name=dataset_name,
+                data_dir=Path(data_dir),
+            )
+            num_classes = (
+                num_classes_arg
+                or (loader.num_classes if hasattr(loader, "num_classes") else 3036)
+            )
+
+        train_loader = loader.get_dataloader("train", batch_size=batch_size)
+
+        val_loader = None
+        val_split = None
+        for split_name in ["validation", "val", "test"]:
+            try:
+                val_loader = loader.get_dataloader(
+                    split_name, batch_size=batch_size * 2
+                )
+                val_split = split_name
+                break
+            except Exception:  # noqa: BLE001, S110
+                pass
+
+        if val_loader is None:
+            val_loader = train_loader
+
+        click.echo("  ✓ Loaded training data")
+        if val_split:
+            click.echo(f"  ✓ Loaded {val_split} data")
+
+        # Create model
+        click.echo("Creating HierCode model...")
+        model = HierCodeNet(
+            num_classes=num_classes,
+            codebook_size=codebook_total_size,
+            num_levels=3,
+            input_channels=1,
+            image_size=image_size,
+        ).to(device)
+
+        click.echo(f"  ✓ Model created with {num_classes} classes")
+
+        # Create optimizer
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=learning_rate,
+            weight_decay=1e-4,
+        )
+
+        # Setup trainer
+        trainer = setup_trainer_for_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            device=str(device),
+            model_type="hiercode",
+            checkpoint_dir=checkpoint_dir,
+            num_classes=num_classes,
+            image_size=image_size,
+        )
+
+        # Train
+        click.echo(f"Starting training for {epochs} epochs...")
+        trainer.train(num_epochs=epochs)
+        click.echo("✓ Training completed successfully!")
+    except Exception as e:
+        click.echo(f"✗ Training failed: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 @train.command()
 @add_common_options
+@add_image_options
 @add_checkpoint_dir_option("training/hiercode_higita/checkpoints")
 @click.option(
     "--enable-higita-enhancement",
@@ -170,7 +395,114 @@ def hiercode(**kwargs):
 )
 def hiercode_higita(**kwargs):
     """Train HierCode with Hi-GITA enhancement."""
-    _call_variant_main(train_hiercode_higita, kwargs)
+    import torch
+
+    from src.lib.base_trainer import setup_trainer_for_model
+    from src.lib.datasets import KanjiDatasetLoader, ResearchDatasetLoader
+    from src.lib.models import HierCodeHiGITA
+
+    # Extract parameters
+    dataset_name = kwargs.pop("dataset_name", None) or "etl9g"
+    epochs = kwargs.pop("epochs", 30)
+    batch_size = kwargs.pop("batch_size", 32)
+    learning_rate = kwargs.pop("learning_rate", 0.001)
+    checkpoint_dir = kwargs.pop("checkpoint_dir")
+    data_dir = kwargs.pop("data_dir", "dataset")
+    num_classes_arg = kwargs.pop("num_classes", None)
+    image_size = kwargs.pop("image_size", 64)
+    enable_higita = kwargs.pop("enable_higita_enhancement", False)
+
+    click.echo(f"Training HierCode-HiGITA on dataset: {dataset_name}")
+    click.echo(f"Using data directory: {data_dir}")
+    if enable_higita:
+        click.echo("Hi-GITA enhancement enabled")
+
+    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        click.echo(f"Using device: {device}")
+
+        # Load dataset
+        click.echo(f"Loading {dataset_name} dataset...")
+        etl_datasets = ["etl6", "etl7", "etl8g", "etl9g", "combined_all_etl"]
+        if dataset_name in etl_datasets:
+            loader = KanjiDatasetLoader(
+                dataset_name=dataset_name,
+                cache_dir=data_dir,
+                num_workers=4,
+                offline=True,  # Require local cache, no network
+            )
+            num_classes = num_classes_arg or 3036
+        else:
+            loader = ResearchDatasetLoader(
+                dataset_name=dataset_name,
+                data_dir=Path(data_dir),
+            )
+            num_classes = (
+                num_classes_arg
+                or (loader.num_classes if hasattr(loader, "num_classes") else 3036)
+            )
+
+        train_loader = loader.get_dataloader("train", batch_size=batch_size)
+
+        val_loader = None
+        val_split = None
+        for split_name in ["validation", "val", "test"]:
+            try:
+                val_loader = loader.get_dataloader(
+                    split_name, batch_size=batch_size * 2
+                )
+                val_split = split_name
+                break
+            except Exception:  # noqa: BLE001, S110
+                pass
+
+        if val_loader is None:
+            val_loader = train_loader
+
+        click.echo("  ✓ Loaded training data")
+        if val_split:
+            click.echo(f"  ✓ Loaded {val_split} data")
+
+        # Create model
+        click.echo("Creating HierCode-HiGITA model...")
+        model = HierCodeHiGITA(
+            num_classes=num_classes,
+            codebook_size=1024,
+            input_channels=1,
+            image_size=image_size,
+        ).to(device)
+
+        click.echo(f"  ✓ Model created with {num_classes} classes")
+
+        # Create optimizer
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=learning_rate,
+            weight_decay=1e-4,
+        )
+
+        # Setup trainer
+        trainer = setup_trainer_for_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            device=str(device),
+            model_type="hiercode_higita",
+            checkpoint_dir=checkpoint_dir,
+            num_classes=num_classes,
+            image_size=image_size,
+        )
+
+        # Train
+        click.echo(f"Starting training for {epochs} epochs...")
+        trainer.train(num_epochs=epochs)
+        click.echo("✓ Training completed successfully!")
+    except Exception as e:
+        click.echo(f"✗ Training failed: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 @train.command()
@@ -211,20 +543,242 @@ def rnn(**kwargs):
     - hybrid_cnn_rnn: Combined CNN-RNN architecture (best accuracy)
     - linguistic_radical_rnn: Advanced radical decomposition (2000 vocab)
     """
-    _call_variant_main(train_rnn, kwargs)
+    import torch
+
+    from src.lib.base_trainer import setup_trainer_for_model
+    from src.lib.datasets import KanjiDatasetLoader, ResearchDatasetLoader
+    from src.lib.models import KanjiRNN
+
+    # Extract parameters
+    dataset_name = kwargs.pop("dataset_name", None) or "etl9g"
+    epochs = kwargs.pop("epochs", 30)
+    batch_size = kwargs.pop("batch_size", 32)
+    learning_rate = kwargs.pop("learning_rate", 0.001)
+    checkpoint_dir = kwargs.pop("checkpoint_dir")
+    data_dir = kwargs.pop("data_dir", "dataset")
+    num_classes_arg = kwargs.pop("num_classes", None)
+    hidden_size = kwargs.pop("hidden_size", 256)
+    num_layers = kwargs.pop("num_layers", 2)
+    rnn_type = kwargs.pop("rnn_type", "lstm")
+    model_type = kwargs.pop("model_type", "hybrid_cnn_rnn")
+    image_size = kwargs.pop("image_size", 64)
+
+    click.echo(f"Training RNN ({model_type}) on dataset: {dataset_name}")
+    click.echo(f"Using data directory: {data_dir}")
+
+    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        click.echo(f"Using device: {device}")
+
+        # Load dataset
+        click.echo(f"Loading {dataset_name} dataset...")
+        etl_datasets = ["etl6", "etl7", "etl8g", "etl9g", "combined_all_etl"]
+        if dataset_name in etl_datasets:
+            loader = KanjiDatasetLoader(
+                dataset_name=dataset_name,
+                cache_dir=data_dir,
+                num_workers=4,
+                offline=True,  # Require local cache, no network
+            )
+            num_classes = num_classes_arg or 3036
+        else:
+            loader = ResearchDatasetLoader(
+                dataset_name=dataset_name,
+                data_dir=Path(data_dir),
+            )
+            num_classes = (
+                num_classes_arg
+                or (loader.num_classes if hasattr(loader, "num_classes") else 3036)
+            )
+
+        train_loader = loader.get_dataloader("train", batch_size=batch_size)
+
+        val_loader = None
+        val_split = None
+        for split_name in ["validation", "val", "test"]:
+            try:
+                val_loader = loader.get_dataloader(
+                    split_name, batch_size=batch_size * 2
+                )
+                val_split = split_name
+                break
+            except Exception:  # noqa: BLE001, S110
+                pass
+
+        if val_loader is None:
+            val_loader = train_loader
+
+        click.echo("  ✓ Loaded training data")
+        if val_split:
+            click.echo(f"  ✓ Loaded {val_split} data")
+
+        # Create model
+        click.echo("Creating RNN model...")
+        model = KanjiRNN(
+            num_classes=num_classes,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            rnn_type=rnn_type,
+            input_channels=1,
+            image_size=image_size,
+        ).to(device)
+
+        click.echo(f"  ✓ Model created ({model_type} variant)")
+
+        # Create optimizer
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=learning_rate,
+            weight_decay=1e-4,
+        )
+
+        # Setup trainer
+        trainer = setup_trainer_for_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            device=str(device),
+            model_type="rnn",
+            checkpoint_dir=checkpoint_dir,
+            num_classes=num_classes,
+            image_size=image_size,
+        )
+
+        # Train
+        click.echo(f"Starting training for {epochs} epochs...")
+        trainer.train(num_epochs=epochs)
+        click.echo("✓ Training completed successfully!")
+    except Exception as e:
+        click.echo(f"✗ Training failed: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 @train.command()
 @add_common_options
 @add_image_options
 @add_checkpoint_dir_option("training/vit/checkpoints")
-@click.option("--patch-size", type=int, default=4, help="Patch size for ViT")
-@click.option("--embed-dim", type=int, default=192, help="Embedding dimension")
+@click.option("--patch-size", type=int, default=8, help="Patch size for ViT")
+@click.option("--embed-dim", type=int, default=256, help="Embedding dimension")
 @click.option("--depth", type=int, default=12, help="Number of transformer blocks")
-@click.option("--num-heads", type=int, default=3, help="Number of attention heads")
+@click.option("--num-heads", type=int, default=8, help="Number of attention heads")
 def vit(**kwargs):
     """Train Vision Transformer (ViT) model for Kanji recognition."""
-    _call_variant_main(train_vit, kwargs)
+    import torch
+
+    from src.lib.base_trainer import setup_trainer_for_model
+    from src.lib.datasets import KanjiDatasetLoader, ResearchDatasetLoader
+    from src.lib.models import KanjiViT
+
+    # Extract parameters
+    dataset_name = kwargs.pop("dataset_name", None) or "etl9g"
+    epochs = kwargs.pop("epochs", 30)
+    batch_size = kwargs.pop("batch_size", 32)
+    learning_rate = kwargs.pop("learning_rate", 0.001)
+    checkpoint_dir = kwargs.pop("checkpoint_dir")
+    data_dir = kwargs.pop("data_dir", "dataset")
+    num_classes_arg = kwargs.pop("num_classes", None)
+    image_size = kwargs.pop("image_size", 64)
+    patch_size = kwargs.pop("patch_size", 8)
+    embed_dim = kwargs.pop("embed_dim", 256)
+    depth = kwargs.pop("depth", 12)
+    num_heads = kwargs.pop("num_heads", 8)
+
+    click.echo(f"Training Vision Transformer on dataset: {dataset_name}")
+    click.echo(f"Using data directory: {data_dir}")
+
+    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        click.echo(f"Using device: {device}")
+
+        # Load dataset
+        click.echo(f"Loading {dataset_name} dataset...")
+        etl_datasets = ["etl6", "etl7", "etl8g", "etl9g", "combined_all_etl"]
+        if dataset_name in etl_datasets:
+            loader = KanjiDatasetLoader(
+                dataset_name=dataset_name,
+                cache_dir=data_dir,
+                num_workers=4,
+                offline=True,  # Require local cache, no network
+            )
+            num_classes = num_classes_arg or 3036
+        else:
+            loader = ResearchDatasetLoader(
+                dataset_name=dataset_name,
+                data_dir=Path(data_dir),
+            )
+            num_classes = (
+                num_classes_arg
+                or (loader.num_classes if hasattr(loader, "num_classes") else 3036)
+            )
+
+        train_loader = loader.get_dataloader("train", batch_size=batch_size)
+
+        val_loader = None
+        val_split = None
+        for split_name in ["validation", "val", "test"]:
+            try:
+                val_loader = loader.get_dataloader(
+                    split_name, batch_size=batch_size * 2
+                )
+                val_split = split_name
+                break
+            except Exception:  # noqa: BLE001, S110
+                pass
+
+        if val_loader is None:
+            val_loader = train_loader
+
+        click.echo("  ✓ Loaded training data")
+        if val_split:
+            click.echo(f"  ✓ Loaded {val_split} data")
+
+        # Create model
+        click.echo("Creating Vision Transformer model...")
+        model = KanjiViT(
+            num_classes=num_classes,
+            image_size=image_size,
+            patch_size=patch_size,
+            dim=embed_dim,
+            depth=depth,
+            num_heads=num_heads,
+            mlp_dim=embed_dim * 4,
+            input_channels=1,
+        ).to(device)
+
+        click.echo(f"  ✓ Model created with {num_classes} classes")
+
+        # Create optimizer
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=learning_rate,
+            weight_decay=1e-4,
+        )
+
+        # Setup trainer
+        trainer = setup_trainer_for_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            device=str(device),
+            model_type="vit",
+            checkpoint_dir=checkpoint_dir,
+            num_classes=num_classes,
+            image_size=image_size,
+        )
+
+        # Train
+        click.echo(f"Starting training for {epochs} epochs...")
+        trainer.train(num_epochs=epochs)
+        click.echo("✓ Training completed successfully!")
+    except Exception as e:
+        click.echo(f"✗ Training failed: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 @train.command()
@@ -233,7 +787,110 @@ def vit(**kwargs):
 @add_checkpoint_dir_option("training/qat/checkpoints")
 def qat(**kwargs):
     """Train Quantization-Aware Training (QAT) model for Kanji recognition."""
-    _call_variant_main(train_qat, kwargs)
+    import torch
+
+    from src.lib.base_trainer import setup_trainer_for_model
+    from src.lib.datasets import KanjiDatasetLoader, ResearchDatasetLoader
+    from src.lib.models import QuantizableLightweightKanjiNet
+
+    # Extract parameters
+    dataset_name = kwargs.pop("dataset_name", None) or "etl9g"
+    epochs = kwargs.pop("epochs", 30)
+    batch_size = kwargs.pop("batch_size", 32)
+    learning_rate = kwargs.pop("learning_rate", 0.001)
+    checkpoint_dir = kwargs.pop("checkpoint_dir")
+    data_dir = kwargs.pop("data_dir", "dataset")
+    num_classes_arg = kwargs.pop("num_classes", None)
+    image_size = kwargs.pop("image_size", 64)
+
+    click.echo(f"Training QAT model on dataset: {dataset_name}")
+    click.echo(f"Using data directory: {data_dir}")
+
+    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        click.echo(f"Using device: {device}")
+
+        # Load dataset
+        click.echo(f"Loading {dataset_name} dataset...")
+        etl_datasets = ["etl6", "etl7", "etl8g", "etl9g", "combined_all_etl"]
+        if dataset_name in etl_datasets:
+            loader = KanjiDatasetLoader(
+                dataset_name=dataset_name,
+                cache_dir=data_dir,
+                num_workers=4,
+                offline=True,  # Require local cache, no network
+            )
+            num_classes = num_classes_arg or 3036
+        else:
+            loader = ResearchDatasetLoader(
+                dataset_name=dataset_name,
+                data_dir=Path(data_dir),
+            )
+            num_classes = (
+                num_classes_arg
+                or (loader.num_classes if hasattr(loader, "num_classes") else 3036)
+            )
+
+        train_loader = loader.get_dataloader("train", batch_size=batch_size)
+
+        val_loader = None
+        val_split = None
+        for split_name in ["validation", "val", "test"]:
+            try:
+                val_loader = loader.get_dataloader(
+                    split_name, batch_size=batch_size * 2
+                )
+                val_split = split_name
+                break
+            except Exception:  # noqa: BLE001, S110
+                pass
+
+        if val_loader is None:
+            val_loader = train_loader
+
+        click.echo("  ✓ Loaded training data")
+        if val_split:
+            click.echo(f"  ✓ Loaded {val_split} data")
+
+        # Create model
+        click.echo("Creating Quantization-Aware Training model...")
+        model = QuantizableLightweightKanjiNet(
+            num_classes=num_classes,
+            input_channels=1,
+            image_size=image_size,
+        ).to(device)
+
+        click.echo(f"  ✓ Model created with {num_classes} classes")
+
+        # Create optimizer
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=learning_rate,
+            weight_decay=1e-4,
+        )
+
+        # Setup trainer
+        trainer = setup_trainer_for_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            device=str(device),
+            model_type="qat",
+            checkpoint_dir=checkpoint_dir,
+            num_classes=num_classes,
+            image_size=image_size,
+        )
+
+        # Train
+        click.echo(f"Starting training for {epochs} epochs...")
+        trainer.train(num_epochs=epochs)
+        click.echo("✓ Training completed successfully!")
+    except Exception as e:
+        click.echo(f"✗ Training failed: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 # ============================================================================

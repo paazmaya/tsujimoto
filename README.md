@@ -43,10 +43,10 @@ python3 -m venv venv && source venv/bin/activate
 pip install -e .
 
 # 4. Download dataset (first time only, ~7.5GB)
-python scripts/download_datasets.py --dataset etl9g
+uv run python scripts/download_datasets.py --dataset etl9g
 
 # 5. Train! (2-3 min/epoch on Apple Silicon MPS, ~15 min/epoch on Intel CPU)
-python scripts/train_modern.py --epochs 30 --batch-size 64 --device auto
+uv run python scripts/train.py cnn --epochs 30 --batch-size 64
 ```
 
 **Full Mac Setup Guide**: See [docs/MAC_SETUP_GUIDE.md](docs/MAC_SETUP_GUIDE.md) for detailed instructions, troubleshooting, and performance tips.
@@ -186,25 +186,24 @@ python scripts/download_research_datasets.py --dataset megahan97k
 python scripts/prepare_research_dataset.py --dataset megahan97k
 
 # 3. Train with research dataset
-python scripts/train_modern.py --model cnn --dataset-name megahan97k --epochs 50
+uv run python scripts/train.py cnn --data-dir dataset/research_datasets --epochs 50
 ```
 
 **More Options:**
 
 ```ps1
 # List all available datasets
-python scripts/download_research_datasets.py --list
+uv run python scripts/download_research_datasets.py --list
 
 # Download all research datasets
-python scripts/download_research_datasets.py --all
+uv run python scripts/download_research_datasets.py --all
 
-# Train with large dataset subset (MegaHan97K only)
-python scripts/train_modern.py --model vit --dataset-name megahan97k \
-  --dataset-subset top-3000 --epochs 100
+# Train with large dataset subset (any dataset, any model)
+uv run python scripts/train.py vit --data-dir dataset --epochs 100
 
 # Use in Python code
 from src.lib.datasets import ResearchDatasetLoader
-loader = ResearchDatasetLoader("megahan97k", data_dir="data/research_datasets")
+loader = ResearchDatasetLoader("megahan97k", data_dir="dataset/research_datasets")
 train_loader = loader.get_dataloader(batch_size=32, split="train")
 ```
 
@@ -292,33 +291,33 @@ All 6 methods are accessible via CLI subcommands:
 
 ```bash
 # Phase 1: GL-HPN - Global-Local Hierarchical Retrieval
-python scripts/train.py glhpn --epochs 30 --embedding-dim 512 --top-k 100
+uv run python scripts/train.py glhpn --epochs 30 --embedding-dim 512 --top-k 100
 
 # Phase 2: DTRNet - Dual Text-Radical Decoding
-python scripts/train.py dtrnet --epochs 30 --text-hidden-dim 1024 --use-igca
+uv run python scripts/train.py dtrnet --epochs 30 --text-hidden-dim 1024 --use-igca
 
 # Phase 3: Degradation-Aware Training
-python scripts/train.py degradation --epochs 30 --degradation-types blur,stain,contrast,seal --restoration-enabled
+uv run python scripts/train.py degradation --epochs 30 --degradation-types blur,stain,contrast,seal --restoration-enabled
 
 # Phase 4: Online Handwriting Trajectory Training
-python scripts/train.py trajectory --epochs 30 --max-strokes 20 --use-hybrid
+uv run python scripts/train.py trajectory --epochs 30 --max-strokes 20 --use-hybrid
 
 # Phase 5: Multi-Granular Contrastive Learning
-python scripts/train.py multigranular --epochs 30 --stroke-loss-weight 0.25 --radical-loss-weight 0.35
+uv run python scripts/train.py multigranular --epochs 30 --stroke-loss-weight 0.25 --radical-loss-weight 0.35
 
 # Phase 6: End-to-End Restoration Pipeline
-python scripts/train.py restoration_pipeline --epochs 30 --training-strategy end_to_end --classification-weight 0.5
+uv run python scripts/train.py restoration_pipeline --epochs 30 --training-strategy end_to_end --classification-weight 0.5
 ```
 
 View all options for any method:
 
 ```bash
-python scripts/train.py glhpn --help
-python scripts/train.py dtrnet --help
-python scripts/train.py degradation --help
-python scripts/train.py trajectory --help
-python scripts/train.py multigranular --help
-python scripts/train.py restoration_pipeline --help
+uv run python scripts/train.py glhpn --help
+uv run python scripts/train.py dtrnet --help
+uv run python scripts/train.py degradation --help
+uv run python scripts/train.py trajectory --help
+uv run python scripts/train.py multigranular --help
+uv run python scripts/train.py restoration_pipeline --help
 ```
 
 ### Lightning Integration for Advanced Methods
@@ -431,13 +430,9 @@ uv run python scripts/train.py cnn --data-dir dataset/etl9g --epochs 30
 uv run python scripts/train.py cnn --data-dir /custom/path/to/dataset --epochs 30
 
 # Test all variants with custom dataset
-uv run python scripts/train.py rnn --data-dir /data/custom --model-type hybrid_cnn_rnn
-uv run python scripts/train.py hiercode --data-dir /data/custom
-uv run python scripts/train.py vit --data-dir /data/custom
-
-# Direct script execution with custom dataset
-python scripts/train_cnn_model.py --data-dir /path/to/dataset --epochs 30
-python scripts/train_rnn.py --data-dir /path/to/dataset --model-type hybrid_cnn_rnn
+uv run python scripts/train.py rnn --data-dir /custom/path/to/dataset --model-type hybrid_cnn_rnn
+uv run python scripts/train.py hiercode --data-dir /custom/path/to/dataset
+uv run python scripts/train.py vit --data-dir /custom/path/to/dataset
 ```
 
 ### Development
@@ -703,7 +698,7 @@ uv run python scripts/quantize_to_4bit_bitsandbytes.py --model-path training/cnn
 
 **Recommended Pipeline for Edge Deployment:**
 
-1. Train model: `train_cnn_model.py` → 15 MB (float32)
+1. Train model: `train.py cnn` (via `uv run python scripts/train.py cnn`) → 15 MB (float32)
 2. Option A (Balanced): Quantize to INT8 → 4.5 MB (CPU inference, 3.4x smaller)
 3. Option B (GPU-Edge): Quantize to 4-bit NF4 → 15 MB file, 3.8 MB runtime (2-4x faster inference)
 
@@ -1030,11 +1025,7 @@ prediction = np.argmax(logits[0])
 ├── RESEARCH.md               ← Research findings and references
 │
 ├── scripts/                  ← Training and deployment scripts
-│   ├── train_cnn_model.py  ← CNN baseline
-│   ├── train_qat.py          ← Quantization-aware training
-│   ├── train_radical_rnn.py  ← RNN variant
-│   ├── train_hiercode.py     ← HierCode approach
-│   ├── train_vit.py          ← Vision Transformer
+│   ├── train.py            ← Unified training CLI (cnn, rnn, vit, hiercode, qat, hiercode_higita)
 │   ├── convert_to_onnx.py    ← ONNX export
 │   ├── convert_to_safetensors.py ← SafeTensors export
 │
@@ -1283,12 +1274,14 @@ uv run python scripts/train.py hiercode-higita --epochs 30
 
 Individual training scripts (for direct execution or programmatic use):
 
-- `scripts/train_cnn_model.py` - CNN baseline
-- `scripts/train_qat.py` - Quantization-aware training
-- `scripts/train_radical_rnn.py` - RNN variant
-- `scripts/train_vit.py` - Vision Transformer
-- `scripts/train_hiercode.py` - HierCode approach
-- `scripts/train_hiercode_higita.py` - Hi-GITA variant
+**Individual Training Variants** (via `scripts/train.py` subcommands):
+
+- `scripts/train.py cnn` - CNN baseline
+- `scripts/train.py qat` - Quantization-aware training
+- `scripts/train.py rnn` - RNN variant with multiple model types
+- `scripts/train.py vit` - Vision Transformer
+- `scripts/train.py hiercode` - HierCode approach
+- `scripts/train.py hiercode_higita` - Hi-GITA variant
 
 **Example**:
 
@@ -1363,7 +1356,7 @@ A: Prepare it first: `uv run python scripts/prepare_dataset.py`. Scripts check f
 A: All scripts have checkpoint/resume system built in. Checkpoints auto-save after each epoch in `training/{approach}/checkpoints/`. Resume with `--resume-from training/{approach}/checkpoints/checkpoint_epoch_015.pt` or it auto-detects the latest checkpoint if you just re-run the command.
 
 **Q: What approaches support automatic checkpoint resumption?**
-A: All 6 training scripts: `train_cnn_model.py`, `train_qat.py`, `train_radical_rnn.py`, `train_vit.py`, `train_hiercode.py`, `train_hiercode_higita.py`. Each uses its own checkpoint folder: `training/cnn/checkpoints/`, `training/qat/checkpoints/`, `training/rnn/checkpoints/`, `training/vit/checkpoints/`, `training/hiercode/checkpoints/`, `training/hiercode_higita/checkpoints/`.
+A: All 6 training variants via `train.py`: `cnn`, `rnn`, `vit`, `hiercode`, `qat`, `hiercode_higita`. Each uses its own checkpoint folder: `training/cnn/checkpoints/`, `training/qat/checkpoints/`, `training/rnn/checkpoints/`, `training/vit/checkpoints/`, `training/hiercode/checkpoints/`, `training/hiercode_higita/checkpoints/`.
 
 **Q: How do I resume from the latest checkpoint?**
 A: Just re-run the training command and it automatically resumes from the latest checkpoint found:
