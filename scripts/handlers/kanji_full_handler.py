@@ -50,19 +50,18 @@ class KanjiFulHandler(DatasetFormatHandler):
         dataset_path.mkdir(parents=True, exist_ok=True)
         return dataset_path
 
-    def extract(self, archive_path: Path, output_dir: Path) -> Path:
+    def extract(self, archive_path: Path, output_dir: Path) -> Optional[Path]:
         """
-        Extract Kanji Full archive.
+        Extract Kanji Full archive safely.
 
         Args:
             archive_path: Path to archive
             output_dir: Extract to this directory
 
         Returns:
-            Path to extracted dataset
+            Path to extracted dataset, or None if extraction failed
         """
-        import tarfile
-        import zipfile
+        from src.lib.system import safe_extract_tar, safe_extract_zip
 
         output_dir.mkdir(parents=True, exist_ok=True)
         dataset_dir = output_dir / "kanji_full"
@@ -71,21 +70,9 @@ class KanjiFulHandler(DatasetFormatHandler):
             logger.info(f"Extracting {archive_path} to {dataset_dir}")
 
             if str(archive_path).endswith(".tar.gz") or str(archive_path).endswith(".tar"):
-                with tarfile.open(archive_path, "r:*") as tf:
-                    # Safely extract with path filtering
-                    for member in tf.getmembers():
-                        if member.name.startswith("/") or ".." in member.name:
-                            logger.warning(f"Skipping unsafe path: {member.name}")
-                            continue
-                        tf.extract(member, dataset_dir)
+                safe_extract_tar(archive_path, dataset_dir, mode="r:*")
             else:
-                with zipfile.ZipFile(archive_path, "r") as zf:
-                    # Safely extract with path filtering
-                    for member in zf.namelist():
-                        if member.startswith("/") or ".." in member:
-                            logger.warning(f"Skipping unsafe path: {member}")
-                            continue
-                        zf.extract(member, dataset_dir)
+                safe_extract_zip(archive_path, dataset_dir)
 
             logger.info("✓ Extracted Kanji Full")
             return dataset_dir
@@ -131,8 +118,8 @@ class KanjiFulHandler(DatasetFormatHandler):
         Args:
             dataset_path: Path to dataset directory
 
-        Yields:
-            Records with kanji character image and metadata
+        Returns:
+            List of records with kanji character image and metadata
         """
         records = []
 

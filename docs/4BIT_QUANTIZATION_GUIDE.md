@@ -27,10 +27,11 @@ Unlike traditional quantization that reduces file size, BitsAndBytes uses **dyna
 ### NF4 (Normalized Float 4-bit) - Recommended
 
 ```ps1
-uv run python scripts/quantize_to_4bit_bitsandbytes.py \
-    --model-path training/cnn/checkpoints/checkpoint_best.pt \
+uv run python scripts/convert_model.py \
+    --checkpoint training/cnn/checkpoints/checkpoint_best.pt \
     --model-type cnn \
-    --method nf4
+    --format pytorch \
+    --quantization 4bit_nf4
 ```
 
 **Characteristics:**
@@ -51,10 +52,11 @@ cnn_int8_4bit_NF4.json    (metadata with quantization parameters)
 ### FP4 (Float 4-bit)
 
 ```ps1
-uv run python scripts/quantize_to_4bit_bitsandbytes.py \
-    --model-path training/cnn/checkpoints/checkpoint_best.pt \
+uv run python scripts/convert_model.py \
+    --checkpoint training/cnn/checkpoints/checkpoint_best.pt \
     --model-type cnn \
-    --method fp4
+    --format pytorch \
+    --quantization 4bit_fp4
 ```
 
 **Characteristics:**
@@ -75,11 +77,11 @@ cnn_int8_4bit_FP4.json    (metadata)
 ### Double Quantization (NF4 with Scale Factor Quantization)
 
 ```ps1
-uv run python scripts/quantize_to_4bit_bitsandbytes.py \
-    --model-path training/cnn/checkpoints/checkpoint_best.pt \
+uv run python scripts/convert_model.py \
+    --checkpoint training/cnn/checkpoints/checkpoint_best.pt \
     --model-type cnn \
-    --method nf4 \
-    --double-quant
+    --format pytorch \
+    --quantization 4bit_nf4
 ```
 
 **Characteristics:**

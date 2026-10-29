@@ -14,8 +14,9 @@ Example:
 
 import json
 import logging
+import struct
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 import torch.nn as nn
@@ -26,10 +27,28 @@ from src.lib.conversion import (
     get_model_date,
     log_conversion_summary,
     quantize_model,
+    quantize_state_dict_int8,
+    quantize_tensor_to_f16,
+    quantize_tensor_to_q4,
+    quantize_tensor_to_q8,
 )
 from src.lib.onnx import validate_onnx_model
 
 logger = logging.getLogger(__name__)
+
+
+def _write_gguf_string(buf: bytearray, text: str) -> None:
+    """Append a GGUF-encoded UTF-8 string (uint64 length + bytes) to buffer."""
+    encoded = text.encode("utf-8")
+    buf.extend(struct.pack("<Q", len(encoded)))
+    buf.extend(encoded)
+
+
+def _write_gguf_kv(buf: bytearray, key: str, value_type: int, packed_value: bytes) -> None:
+    """Append a GGUF metadata key-value entry to buffer."""
+    _write_gguf_string(buf, key)
+    buf.extend(struct.pack("<I", value_type))
+    buf.extend(packed_value)
 
 
 class ModelExporter:
@@ -97,7 +116,7 @@ class ModelExporter:
         export_model = self.model
         quant_metadata = {}
 
-        if quantization != "float32":
+        if quantization not in ("float32", "none"):
             export_model, quant_metadata = quantize_model(self.model, quantization, self.device)
 
         # Save model
@@ -271,16 +290,26 @@ class ModelExporter:
 
         # Quantize if needed
         export_model = self.model
-        quant_metadata = {}
+        quant_metadata: Dict[str, Any] = {}
 
-        if quantization != "float32":
-            export_model, quant_metadata = quantize_model(self.model, quantization, self.device)
+        if quantization not in ("float32", "none"):
+            if quantization == "int8":
+                # SafeTensors requires pure torch.Tensor dict (not dynamic QuantizedLinear packed params)
+                raw_state = dequantize_state_dict(self.model.state_dict())
+                state_dict, quant_metadata = quantize_state_dict_int8(raw_state)
+            else:
+                export_model, quant_metadata = quantize_model(self.model, quantization, self.device)
+                state_dict = export_model.state_dict()
+        else:
+            state_dict = dequantize_state_dict(export_model.state_dict())
 
-        # Get state dict
-        state_dict = export_model.state_dict()
+        # Ensure all tensors are contiguous torch.Tensor instances for SafeTensors
+        clean_state_dict = {
+            k: v.contiguous() for k, v in state_dict.items() if isinstance(v, torch.Tensor)
+        }
 
         # Save with SafeTensors
-        save_file(state_dict, str(output_path))
+        save_file(clean_state_dict, str(output_path))
 
         exported_size = output_path.stat().st_size
 
@@ -362,31 +391,95 @@ class ModelExporter:
         export_model = self.model.cpu()
         export_model.eval()
 
-        state_dict = export_model.state_dict()
+        state_dict = dequantize_state_dict(export_model.state_dict())
+        tensor_items = [(k, v) for k, v in state_dict.items() if isinstance(v, torch.Tensor)]
 
         logger.info("✓ Model prepared for GGUF export")
         logger.info(f"  Quantization: {quantization}")
-        logger.info(f"  Number of layers: {len(state_dict)}")
+        logger.info(f"  Number of tensors: {len(tensor_items)}")
 
-        # Note: Full GGUF implementation would require:
-        # 1. Serialization of model metadata (architecture, layer configs)
-        # 2. Layer-by-layer quantization based on quantization format
-        # 3. Binary packing into GGUF format
-        # For now, save as intermediate PyTorch format with GGUF metadata
-
-        # Save state dict with GGUF format indicator
-        gguf_data = {
-            "__metadata__": {
-                "format": "gguf",
-                "quantization": quantization,
-                "model_type": self.model_type,
-                "num_classes": self.num_classes,
-                "image_size": self.image_size,
-            },
-            "state_dict": state_dict,
+        # GGUF v3 binary serialization
+        # GGML tensor type codes: F32=0, F16=1, Q4_0=2, Q8_0=8, Q2_K=10, Q3_K=11, Q4_K=12, Q5_K=13, Q6_K=14
+        ggml_type_map = {
+            "f32": 0,
+            "f16": 1,
+            "q8_0": 8,
+            "q2_k": 10,
+            "q3_k": 11,
+            "q4_k": 12,
+            "q5_k": 13,
+            "q6_k": 14,
         }
+        target_ggml_type = ggml_type_map[quantization]
 
-        torch.save(gguf_data, str(output_path))
+        header_buf = bytearray()
+        # Magic 'GGUF' + Version 3 (uint32) + tensor_count (uint64) + kv_count (uint64)
+        header_buf.extend(b"GGUF")
+        header_buf.extend(struct.pack("<I", 3))
+        header_buf.extend(struct.pack("<Q", len(tensor_items)))
+
+        # Metadata KV pairs (5 entries)
+        # GGUF value types: UINT32=4, FLOAT32=6, STRING=8
+        header_buf.extend(struct.pack("<Q", 5))
+
+        def _pack_gguf_str(s: str) -> bytes:
+            b = s.encode("utf-8")
+            return struct.pack("<Q", len(b)) + b
+
+        _write_gguf_kv(header_buf, "general.architecture", 8, _pack_gguf_str(self.model_type))
+        _write_gguf_kv(header_buf, "general.quantization", 8, _pack_gguf_str(quantization))
+        _write_gguf_kv(header_buf, "kanji.num_classes", 4, struct.pack("<I", int(self.num_classes)))
+        _write_gguf_kv(header_buf, "kanji.image_size", 4, struct.pack("<I", int(self.image_size)))
+        _write_gguf_kv(header_buf, "general.file_type", 4, struct.pack("<I", target_ggml_type))
+
+        # Encode tensor data and build tensor info records
+        tensor_infos_buf = bytearray()
+        tensor_data_buf = bytearray()
+        alignment = 32
+
+        for name, tensor in tensor_items:
+            # Quantize / encode tensor payload
+            if quantization == "f32" or tensor.ndim < 2:
+                raw_bytes = tensor.detach().float().cpu().numpy().tobytes()
+                ggml_type = 0  # F32 for 1D biases/norms or f32 mode
+            elif quantization == "f16":
+                raw_bytes, _, _, _ = quantize_tensor_to_f16(tensor.detach())
+                ggml_type = 1
+            elif quantization == "q8_0":
+                q_bytes, scale, min_val, _ = quantize_tensor_to_q8(tensor.detach())
+                raw_bytes = struct.pack("<ff", scale, min_val) + q_bytes
+                ggml_type = 8
+            else:
+                # 4-bit / K-quant family
+                q_bytes, scale, min_val, _ = quantize_tensor_to_q4(tensor.detach())
+                raw_bytes = struct.pack("<ff", scale, min_val) + q_bytes
+                ggml_type = target_ggml_type
+
+            # Align offset in tensor_data_buf to 32 bytes
+            pad = (alignment - (len(tensor_data_buf) % alignment)) % alignment
+            if pad:
+                tensor_data_buf.extend(b"\x00" * pad)
+            offset = len(tensor_data_buf)
+            tensor_data_buf.extend(raw_bytes)
+
+            # Write tensor descriptor: name, n_dims (uint32), dims (uint64 * n_dims), type (uint32), offset (uint64)
+            _write_gguf_string(tensor_infos_buf, name)
+            shape = tuple(tensor.shape) if tensor.ndim > 0 else (1,)
+            tensor_infos_buf.extend(struct.pack("<I", len(shape)))
+            for dim in shape:
+                tensor_infos_buf.extend(struct.pack("<Q", int(dim)))
+            tensor_infos_buf.extend(struct.pack("<I", ggml_type))
+            tensor_infos_buf.extend(struct.pack("<Q", offset))
+
+        # Combine header + tensor_infos, pad to alignment, then append tensor_data_buf
+        combined_header = header_buf + tensor_infos_buf
+        header_pad = (alignment - (len(combined_header) % alignment)) % alignment
+        if header_pad:
+            combined_header.extend(b"\x00" * header_pad)
+
+        with open(output_path, "wb") as f:
+            f.write(combined_header)
+            f.write(tensor_data_buf)
 
         exported_size = output_path.stat().st_size
 

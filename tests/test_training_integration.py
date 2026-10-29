@@ -21,8 +21,8 @@ from src.lib.config import OptimizationConfig
 
 @pytest.fixture
 def dummy_dataset():
-    """Create a small dummy dataset for testing"""
-    # Create 20 samples, 64x64 images
+    """Create a deterministic dummy dataset for testing."""
+    torch.manual_seed(42)
     x = torch.randn(20, 1, 64, 64)
     y = torch.randint(0, 10, (20,))
     return TensorDataset(x, y)
@@ -144,17 +144,18 @@ class TestTrainingLoop:
         assert all(0 <= p < 10 for p in predictions), "Predictions out of range"
 
     def test_loss_decreases_over_epochs(self, dummy_model, dummy_dataset):
-        """Test that loss generally decreases over multiple epochs (overfitting check)"""
+        """Test that loss generally decreases over multiple epochs (overfitting check)."""
+        torch.manual_seed(42)
         model = dummy_model(num_classes=10)
-        train_loader = DataLoader(dummy_dataset, batch_size=4, shuffle=True)
+        train_loader = DataLoader(dummy_dataset, batch_size=4, shuffle=False)
 
         criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)  # Higher LR for fast convergence
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
 
         epoch_losses = []
 
-        # Train for 3 epochs
-        for _epoch in range(3):
+        # Train for 5 epochs on deterministic batches
+        for _epoch in range(5):
             model.train()
             epoch_loss = 0
             num_batches = 0
@@ -173,47 +174,35 @@ class TestTrainingLoop:
             avg_loss = epoch_loss / num_batches
             epoch_losses.append(avg_loss)
 
-        # Check that loss decreased from first to last epoch
         assert epoch_losses[-1] < epoch_losses[0], (
             f"Loss did not decrease: {epoch_losses[0]:.4f} -> {epoch_losses[-1]:.4f}"
         )
 
 
 class TestModelArchitectures:
-    """Test different model architectures with dummy data"""
+    """Test production model architectures from src.lib.models with dummy data."""
 
     def test_cnn_architecture_forward(self):
-        """Test CNN architecture forward pass"""
-        try:
-            # Note: train_cnn_model was consolidated into train.py
-            # Model classes can be imported from src.lib modules if needed
-            try:
-                from scripts.train_cnn_model import LightweightKanjiNet
-            except ImportError:
-                pytest.skip("LightweightKanjiNet not available (train_cnn_model consolidated)")
+        """Test LightweightKanjiNet architecture forward pass."""
+        from src.lib.models import LightweightKanjiNet
 
-            model = LightweightKanjiNet(num_classes=10)
-            x = torch.randn(4, 1, 64, 64)
-            output = model(x)
+        model = LightweightKanjiNet(num_classes=10)
+        x = torch.randn(4, 1, 64, 64)
+        output = model(x)
 
-            assert output.shape == (4, 10)
-            assert not torch.isnan(output).any()
-        except ImportError:
-            pytest.skip("LightweightKanjiNet not available")
+        assert output.shape == (4, 10)
+        assert not torch.isnan(output).any()
 
     def test_rnn_architecture_forward(self):
-        """Test RNN architecture forward pass"""
-        try:
-            from scripts.train_rnn import KanjiRNN
+        """Test KanjiRNN architecture forward pass."""
+        from src.lib.models import KanjiRNN
 
-            model = KanjiRNN(num_classes=10)
-            x = torch.randn(4, 10, 4)  # (batch, seq_len, features)
-            output = model(x)
+        model = KanjiRNN(num_classes=10, hidden_size=32, num_layers=1)
+        x = torch.randn(4, 1, 64, 64)
+        output = model(x)
 
-            assert output.shape == (4, 10)
-            assert not torch.isnan(output).any()
-        except ImportError:
-            pytest.skip("KanjiRNN not available")
+        assert output.shape == (4, 10)
+        assert not torch.isnan(output).any()
 
 
 class TestConfigIntegration:

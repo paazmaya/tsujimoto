@@ -270,7 +270,7 @@ class ExperimentTracker:
         if not model_path.exists():
             raise FileNotFoundError(f"Model not found: {model_path}")
 
-        state_dict = torch.load(model_path)
+        state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
         model.load_state_dict(state_dict)
 
         logger.info(f"Loaded model: {model_path}")

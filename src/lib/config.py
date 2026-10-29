@@ -8,7 +8,7 @@ with built-in validation, type safety, and schema generation.
 import json
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -150,10 +150,9 @@ class OptimizationConfig(BaseModel):
 
     @field_validator("data_dir", mode="before")
     @classmethod
-    def validate_data_dir(cls, v):
-        """Validate that data directory exists or create it."""
+    def validate_data_dir(cls, v: Union[str, Path]) -> str:
+        """Normalize data directory path to string without requiring pre-existence."""
         path = Path(v)
-        # Don't enforce strict existence check - allow creation during training
         return str(path)
 
     def to_dict(self) -> dict:

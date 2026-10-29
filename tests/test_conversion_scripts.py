@@ -1,244 +1,196 @@
 #!/usr/bin/env python3
-"""Unit tests for remaining untested scripts."""
+"""Unit and integration tests for model conversion, export, and quantization scripts."""
+
+import struct
+import sys
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+import torch
+
+from scripts import analyze_model, convert_model, verify_setup
+from src.lib.conversion import load_model_checkpoint, quantize_model
+from src.lib.model_export import ModelExporter
+from src.lib.models import LightweightKanjiNet
 
 
-class TestConvertToSafetensors:
-    """Tests for SafeTensors conversion script."""
-
-    def test_convert_to_safetensors_module_imports(self):
-        """Test that convert_to_safetensors module can be imported."""
-        try:
-            from scripts import convert_to_safetensors
-
-            assert convert_to_safetensors is not None
-        except ImportError:
-            # Model dependency might not be available in test environment
-            pass
-
-    def test_has_load_model_for_conversion(self):
-        """Test that conversion module has conversion function."""
-        try:
-            from scripts.convert_to_safetensors import load_model_for_conversion
-
-            assert load_model_for_conversion is not None
-        except (ImportError, AttributeError):
-            pass
+@pytest.fixture
+def sample_checkpoint(tmp_path: Path) -> Path:
+    """Create a real LightweightKanjiNet checkpoint on disk."""
+    model = LightweightKanjiNet(num_classes=12, input_channels=1, image_size=64)
+    ckpt_path = tmp_path / "sample_cnn.pth"
+    torch.save({"model_state_dict": model.state_dict(), "epoch": 1}, ckpt_path)
+    return ckpt_path
 
 
-class TestConvertInt8PyTorchToQuantizedONNX:
-    """Tests for INT8 PyTorch to ONNX quantization conversion."""
+class TestConvertModelCLI:
+    """Tests for unified scripts/convert_model.py CLI and functions."""
 
-    def test_module_imports(self):
-        """Test that INT8 conversion module can be imported."""
-        try:
-            from scripts import convert_int8_pytorch_to_quantized_onnx
+    def test_parser_defaults_and_options(self):
+        """Test create_parser parses required and optional conversion flags."""
+        parser = convert_model.create_parser()
+        args = parser.parse_args(
+            [
+                "--checkpoint",
+                "model.pth",
+                "--format",
+                "gguf",
+                "--quantization",
+                "q4_k",
+                "--model-type",
+                "cnn",
+                "--num-classes",
+                "12",
+            ]
+        )
+        assert args.checkpoint == "model.pth"
+        assert args.format == "gguf"
+        assert args.quantization == "q4_k"
+        assert args.model_type == "cnn"
+        assert args.num_classes == 12
 
-            assert convert_int8_pytorch_to_quantized_onnx is not None
-        except ImportError:
-            pass
+    def test_load_checkpoint_extracts_state_dict(self, sample_checkpoint: Path):
+        """Test load_checkpoint returns a valid state dict from trainer checkpoint."""
+        state_dict = convert_model.load_checkpoint(str(sample_checkpoint), device="cpu")
+        assert isinstance(state_dict, dict)
+        assert "fc2.weight" in state_dict
+        assert state_dict["fc2.weight"].shape[0] == 12
 
-    def test_has_conversion_functions(self):
-        """Test that conversion module has expected functions."""
-        try:
-            import scripts.convert_int8_pytorch_to_quantized_onnx as module
+    def test_load_model_checkpoint_all_types(self, tmp_path: Path):
+        """Test load_model_checkpoint instantiates real models from src.lib.models."""
+        model, num_classes, info = load_model_checkpoint(str(self._save_cnn(tmp_path)), "cnn")
+        assert isinstance(model, LightweightKanjiNet)
+        assert num_classes == 16
+        assert info["is_quantized"] is False
 
-            # Should have some public conversion API
-            assert len(dir(module)) > 0
-        except ImportError:
-            pass
+    @staticmethod
+    def _save_cnn(tmp_path: Path) -> Path:
+        model = LightweightKanjiNet(num_classes=16)
+        p = tmp_path / "cnn16.pth"
+        torch.save(model.state_dict(), p)
+        return p
 
-
-class TestExport4BitQuantizedONNX:
-    """Tests for 4-bit quantized ONNX export."""
-
-    def test_module_imports(self):
-        """Test that 4-bit export module can be imported."""
-        try:
-            from scripts import export_4bit_quantized_onnx
-
-            assert export_4bit_quantized_onnx is not None
-        except ImportError:
-            pass
-
-
-class TestExportQuantizedToONNX:
-    """Tests for quantized ONNX export."""
-
-    def test_module_imports(self):
-        """Test that quantized export module can be imported."""
-        try:
-            from scripts import export_quantized_to_onnx
-
-            assert export_quantized_to_onnx is not None
-        except ImportError:
-            pass
-
-
-class TestExportToONNXHierCode:
-    """Tests for HierCode ONNX export."""
-
-    def test_module_imports(self):
-        """Test that HierCode ONNX export module can be imported."""
-        try:
-            from scripts import export_to_onnx
-
-            assert export_to_onnx is not None
-        except ImportError:
-            pass
-
-    def test_has_expected_functions(self):
-        """Test that HierCode export has conversion functions."""
-        try:
-            import scripts.export_to_onnx as module
-
-            # Should have export/conversion related functions
-            assert len(dir(module)) > 0
-        except ImportError:
-            pass
-
-
-class TestInspectONNXModel:
-    """Tests for ONNX model inspection."""
-
-    def test_module_imports(self):
-        """Test that ONNX inspector module can be imported."""
-        try:
-            from scripts import inspect_onnx_model
-
-            assert inspect_onnx_model is not None
-        except ImportError:
-            pass
-
-    def test_has_inspect_function(self):
-        """Test that inspector has inspection function."""
-        try:
-            from scripts.inspect_onnx_model import inspect_onnx_model as inspect_func
-
-            assert inspect_func is not None
-        except (ImportError, AttributeError):
-            pass
-
-    def test_handles_missing_file(self):
-        """Test that inspector handles missing files gracefully."""
-        try:
-            from scripts.inspect_onnx_model import inspect_onnx_model as inspect_func
-
-            # Should not raise exception with missing file
-            result = inspect_func("/nonexistent/path/model.onnx")
-            # Result should be None or similar (no exception)
-            assert result is None or isinstance(result, (str, type(None)))
-        except (ImportError, TypeError):
-            # Function might not exist or have different signature
-            pass
-
-
-class TestETL9GSetup:
-    """Tests for ETL9G dataset setup verification."""
-
-    def test_module_imports(self):
-        """Test that verify_etl9g_setup module can be imported."""
-        try:
-            from scripts import verify_etl9g_setup
-
-            assert verify_etl9g_setup is not None
-        except ImportError:
-            pass
-
-    def test_has_analysis_function(self):
-        """Test that setup module has analysis function."""
-        try:
-            from scripts.verify_etl9g_setup import analyze_etl9g_data
-
-            assert analyze_etl9g_data is not None
-        except (ImportError, AttributeError):
-            pass
-
-    def test_analysis_handles_missing_directory(self):
-        """Test that analysis handles missing data directories gracefully."""
-        try:
-            from scripts.verify_etl9g_setup import analyze_etl9g_data
-
-            # Should not raise exception
-            result = analyze_etl9g_data("/nonexistent/data/directory")
-            # Should handle gracefully (None or similar)
-            assert result is None or isinstance(result, (str, type(None)))
-        except (ImportError, TypeError):
-            pass
-
-    def test_has_chunk_verification(self):
-        """Test that setup module has chunk verification."""
-        try:
-            from scripts.verify_etl9g_setup import verify_dataset_chunks
-
-            assert verify_dataset_chunks is not None
-        except (ImportError, AttributeError):
-            # Function might not exist
-            pass
-
-
-class TestAllConversionScriptsLoadable:
-    """Integration test to ensure all conversion scripts can be loaded."""
-
-    def test_all_conversion_modules_can_be_imported(self):
-        """Test that all conversion scripts can at least be imported."""
-        # Test actual scripts in the scripts directory
-        modules_to_test = [
-            "convert_model",
-            "example_safetensors_usage",
-            "prepare_dataset",
-            "train",
-            "verify_setup",
-            "analyze_model",
+    def test_cli_main_pytorch_export(self, sample_checkpoint: Path, tmp_path: Path):
+        """Test convert_model.main() exports PyTorch format end-to-end."""
+        out_file = tmp_path / "exported_model.pth"
+        test_argv = [
+            "convert_model.py",
+            "--checkpoint",
+            str(sample_checkpoint),
+            "--format",
+            "pytorch",
+            "--quantization",
+            "none",
+            "--model-type",
+            "cnn",
+            "--output",
+            str(out_file),
+            "--device",
+            "cpu",
         ]
+        with patch.object(sys, "argv", test_argv):
+            convert_model.main()
 
-        loaded_count = 0
-        for module_name in modules_to_test:
-            try:
-                __import__(f"scripts.{module_name}")
-                loaded_count += 1
-            except (ImportError, SyntaxError):
-                # Some modules might have dependencies not available
-                pass
+        assert out_file.exists()
+        assert out_file.with_suffix(".json").exists()
+        loaded = torch.load(out_file, map_location="cpu", weights_only=True)
+        assert "fc2.weight" in loaded
 
-        # At least some should load successfully
-        assert loaded_count >= 3
+    def test_cli_main_safetensors_export(self, sample_checkpoint: Path, tmp_path: Path):
+        """Test convert_model.main() exports SafeTensors format with INT8 quantization."""
+        out_file = tmp_path / "exported_model.safetensors"
+        test_argv = [
+            "convert_model.py",
+            "--checkpoint",
+            str(sample_checkpoint),
+            "--format",
+            "safetensors",
+            "--quantization",
+            "int8",
+            "--model-type",
+            "cnn",
+            "--output",
+            str(out_file),
+            "--device",
+            "cpu",
+        ]
+        with patch.object(sys, "argv", test_argv):
+            convert_model.main()
+
+        assert out_file.exists()
+        assert out_file.stat().st_size > 0
+
+    def test_cli_main_gguf_export_writes_valid_gguf_header(
+        self, sample_checkpoint: Path, tmp_path: Path
+    ):
+        """Test convert_model.main() writes a binary GGUF v3 file with magic header."""
+        out_file = tmp_path / "exported_model.gguf"
+        test_argv = [
+            "convert_model.py",
+            "--checkpoint",
+            str(sample_checkpoint),
+            "--format",
+            "gguf",
+            "--quantization",
+            "q4_k",
+            "--model-type",
+            "cnn",
+            "--output",
+            str(out_file),
+            "--device",
+            "cpu",
+        ]
+        with patch.object(sys, "argv", test_argv):
+            convert_model.main()
+
+        assert out_file.exists()
+        raw = out_file.read_bytes()
+        assert raw[:4] == b"GGUF"
+        version, tensor_count, kv_count = struct.unpack("<IQQ", raw[4:24])
+        assert version == 3
+        assert tensor_count > 0
+        assert kv_count == 5
 
 
-class TestConversionScriptsHaveFunctions:
-    """Verify that conversion scripts have callable functions."""
+class TestGGUFAndQuantizationFormats:
+    """Tests for GGUF quantization levels and unified quantization."""
 
-    def test_inspect_onnx_has_public_api(self):
-        """Test that inspect_onnx_model has public functions."""
-        try:
-            import scripts.inspect_onnx_model as module
+    @pytest.mark.parametrize("quant", ["f32", "f16", "q8_0", "q4_k", "q2_k"])
+    def test_export_gguf_quantization_levels(self, tmp_path: Path, quant: str):
+        """Verify ModelExporter.export_gguf produces valid GGUF v3 binary across quant levels."""
+        model = LightweightKanjiNet(num_classes=10)
+        exporter = ModelExporter(model, model_type="cnn", num_classes=10, device="cpu")
+        out_path = tmp_path / f"model_{quant}.gguf"
+        saved_path, metadata = exporter.export_gguf(str(out_path), quantization=quant)
 
-            # Should have at least one function
-            functions = [
-                name
-                for name in dir(module)
-                if callable(getattr(module, name)) and not name.startswith("_")
-            ]
-            assert len(functions) > 0
-        except ImportError:
-            pass
+        assert Path(saved_path).exists()
+        data = Path(saved_path).read_bytes()
+        assert data[:4] == b"GGUF"
+        version = struct.unpack("<I", data[4:8])[0]
+        assert version == 3
+        assert metadata["export_format"] == "gguf"
+        assert metadata["quantization"] == quant
 
-    def test_test_etl9g_has_public_api(self):
-        """Test that verify_etl9g_setup has public functions."""
-        try:
-            import scripts.verify_etl9g_setup as module
+    def test_quantize_model_int8_and_bfloat16(self):
+        """Verify quantize_model works on CPU for int8 and bfloat16."""
+        model = LightweightKanjiNet(num_classes=10)
+        q_int8, meta_int8 = quantize_model(model, "int8", device="cpu")
+        assert q_int8 is not None
+        assert meta_int8["quantization_format"] == "int8"
+        assert meta_int8["quantized_size_mb"] > 0
 
-            # Should have at least one analysis function
-            functions = [
-                name
-                for name in dir(module)
-                if callable(getattr(module, name)) and not name.startswith("_")
-            ]
-            assert len(functions) > 0
-        except ImportError:
-            pass
+        model_bf16 = LightweightKanjiNet(num_classes=10)
+        q_bf16, meta_bf16 = quantize_model(model_bf16, "bfloat16", device="cpu")
+        assert meta_bf16["quantization_format"] == "bfloat16"
+        assert next(q_bf16.parameters()).dtype == torch.bfloat16
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+class TestAllUnifiedScriptsLoadable:
+    """Integration tests to ensure all current scripts import and expose their CLI parsers."""
+
+    def test_all_current_scripts_import_and_have_parsers(self):
+        """Verify convert_model, analyze_model, and verify_setup expose create_parser."""
+        assert callable(convert_model.create_parser)
+        assert callable(analyze_model.create_parser)
+        assert callable(verify_setup.create_parser)

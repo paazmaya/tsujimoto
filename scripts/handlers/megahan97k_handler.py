@@ -68,31 +68,25 @@ class MegaHan97KHandler(DatasetFormatHandler):
         dataset_path.mkdir(parents=True, exist_ok=True)
         return dataset_path
 
-    def extract(self, archive_path: Path, output_dir: Path) -> Path:
+    def extract(self, archive_path: Path, output_dir: Path) -> Optional[Path]:
         """
-        Extract MegaHan97K archive.
+        Extract MegaHan97K archive safely.
 
         Args:
             archive_path: Path to tar.gz archive
             output_dir: Extract to this directory
 
         Returns:
-            Path to extracted dataset
+            Path to extracted dataset, or None if extraction failed
         """
-        import tarfile
+        from src.lib.system import safe_extract_tar
 
         output_dir.mkdir(parents=True, exist_ok=True)
         dataset_dir = output_dir / "megahan97k"
 
         try:
             logger.info(f"Extracting {archive_path} to {dataset_dir}")
-            with tarfile.open(archive_path, "r:gz") as tf:
-                # Safely extract with path filtering
-                for member in tf.getmembers():
-                    if member.name.startswith("/") or ".." in member.name:
-                        logger.warning(f"Skipping unsafe path: {member.name}")
-                        continue
-                    tf.extract(member, dataset_dir)
+            safe_extract_tar(archive_path, dataset_dir, mode="r:gz")
             logger.info("✓ Extracted MegaHan97K")
             return dataset_dir
         except Exception as e:
@@ -133,8 +127,8 @@ class MegaHan97KHandler(DatasetFormatHandler):
         Args:
             dataset_path: Path to dataset directory with .npz files
 
-        Yields:
-            Tuples of (image, label)
+        Returns:
+            List of tuples of (image, label)
         """
         records = []
 

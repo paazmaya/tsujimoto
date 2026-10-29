@@ -262,45 +262,41 @@ class TestModelRegistry(unittest.TestCase):
 
     def test_register_multiple_versions(self):
         """Test registering multiple versions of same model."""
-        try:
-            model = SimpleModel()
+        model = SimpleModel()
 
-            for version in ["1.0.0", "2.0.0", "3.0.0"]:
-                model_path = Path(self.tmpdir.name) / f"model_{version}.pt"
-                torch.save(model.state_dict(), model_path)
+        for version in ["1.0.0", "2.0.0", "3.0.0"]:
+            model_path = Path(self.tmpdir.name) / f"model_{version}.pt"
+            torch.save(model.state_dict(), model_path)
 
-                self.registry.register_model(
-                    "test-model",
-                    model_path,
-                    version=version,
-                )
+            self.registry.register_model(
+                "test-model",
+                model_path,
+                version=version,
+            )
 
-            models = self.registry.list_models()
-            # Registry data structure might vary, so just check it has something
-            self.assertTrue(len(models) >= 0)
-        except (TypeError, KeyError):
-            self.skipTest("ModelRegistry data structure not as expected")
+        models = self.registry.list_models()
+        self.assertIn("test-model", models)
+        self.assertGreaterEqual(len(models["test-model"]), 3)
 
     def test_latest_version_tracking(self):
         """Test that latest version is tracked."""
-        try:
-            model = SimpleModel()
+        model = SimpleModel()
 
-            for version in ["1.0.0", "2.0.0"]:
-                model_path = Path(self.tmpdir.name) / f"model_{version}.pt"
-                torch.save(model.state_dict(), model_path)
+        for version in ["1.0.0", "2.0.0"]:
+            model_path = Path(self.tmpdir.name) / f"model_{version}.pt"
+            torch.save(model.state_dict(), model_path)
 
-                self.registry.register_model(
-                    "test-model",
-                    model_path,
-                    version=version,
-                )
+            self.registry.register_model(
+                "test-model",
+                model_path,
+                version=version,
+            )
 
-            models = self.registry.list_models()
-            # Just verify registry has models, exact structure may vary
-            self.assertTrue(len(models) >= 0)
-        except (TypeError, KeyError):
-            self.skipTest("ModelRegistry data structure not as expected")
+        models = self.registry.list_models()
+        self.assertIn("test-model", models)
+        latest_path = self.registry.get_model_path("test-model")
+        self.assertIsNotNone(latest_path)
+        self.assertIn("2.0.0", str(latest_path))
 
 
 class TestFactoryFunctions(unittest.TestCase):
@@ -383,7 +379,8 @@ class TestIntegrationTraining(unittest.TestCase):
 
                 # Verify registry has models
                 models = registry.list_models()
-                self.assertTrue(len(models) >= 0)
+                self.assertIn("kanji-model", models)
+                self.assertEqual(len(models["kanji-model"]), 2)
         except (TypeError, KeyError):
             self.skipTest("Model registry workflow not as expected")
 

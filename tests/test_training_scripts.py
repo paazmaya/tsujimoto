@@ -9,75 +9,113 @@ class TestUnifiedTrainingScript:
 
     def test_train_py_module_imports(self):
         """Test that train.py module can be imported."""
-        try:
-            from scripts import train
+        from scripts import train
 
-            assert train is not None
-        except ImportError:
-            pytest.skip("train.py requires additional dependencies")
+        assert train is not None
 
     def test_train_py_has_subcommands(self):
-        """Test that train.py has the expected subcommands."""
-        try:
-            import click
+        """Test that train.py has all 12 expected base and advanced subcommands."""
+        import click
 
-            from scripts.train import train
+        from scripts.train import train
 
-            # train should be a click group with subcommands
-            assert isinstance(train, click.Group)
+        assert isinstance(train, click.Group)
 
-            # Check for key subcommands
-            subcommands = list(train.commands.keys())
-            expected = ["cnn", "rnn", "vit", "hiercode", "qat", "hiercode_higita"]
-            for cmd in expected:
-                assert cmd in subcommands, f"Missing subcommand: {cmd}"
-        except (ImportError, AttributeError):
-            pytest.skip("train.py structure not available")
+        subcommands = list(train.commands.keys())
+        expected = [
+            "cnn",
+            "rnn",
+            "vit",
+            "hiercode",
+            "qat",
+            "hiercode-higita",
+            "glhpn",
+            "dtrnet",
+            "degradation",
+            "trajectory",
+            "multigranular",
+            "restoration-pipeline",
+        ]
+        for cmd in expected:
+            assert cmd in subcommands, f"Missing subcommand: {cmd}"
 
-    def test_train_py_cnn_subcommand_exists(self):
-        """Test CNN subcommand exists."""
-        try:
-            from scripts.train import train
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "cnn",
+            "rnn",
+            "vit",
+            "hiercode",
+            "qat",
+            "hiercode-higita",
+            "glhpn",
+            "dtrnet",
+            "degradation",
+            "trajectory",
+            "multigranular",
+            "restoration-pipeline",
+        ],
+    )
+    def test_train_py_subcommand_help(self, cmd: str):
+        """Test that every subcommand in train.py renders --help cleanly via CliRunner."""
+        from click.testing import CliRunner
 
-            assert "cnn" in train.commands
-        except (ImportError, AttributeError):
-            pytest.skip("CNN subcommand not available")
+        from scripts.train import train
 
-    def test_train_py_rnn_subcommand_exists(self):
-        """Test RNN subcommand exists."""
-        try:
-            from scripts.train import train
+        runner = CliRunner()
+        result = runner.invoke(train, [cmd, "--help"])
+        assert result.exit_code == 0, f"{cmd} --help failed: {result.output}"
+        assert "--epochs" in result.output
 
-            assert "rnn" in train.commands
-        except (ImportError, AttributeError):
-            pytest.skip("RNN subcommand not available")
+    def test_train_py_end_to_end_smoke_with_mocked_loader(self, tmp_path):
+        """Test invoking cnn and glhpn subcommands end-to-end on synthetic batches."""
+        from unittest.mock import patch
 
-    def test_train_py_vit_subcommand_exists(self):
-        """Test ViT subcommand exists."""
-        try:
-            from scripts.train import train
+        import torch
+        from click.testing import CliRunner
+        from torch.utils.data import DataLoader, TensorDataset
 
-            assert "vit" in train.commands
-        except (ImportError, AttributeError):
-            pytest.skip("ViT subcommand not available")
+        from scripts.train import train
 
-    def test_train_py_hiercode_subcommand_exists(self):
-        """Test HierCode subcommand exists."""
-        try:
-            from scripts.train import train
+        ds = TensorDataset(torch.randn(8, 1, 64, 64), torch.randint(0, 5, (8,)))
+        loader = DataLoader(ds, batch_size=4)
 
-            assert "hiercode" in train.commands
-        except (ImportError, AttributeError):
-            pytest.skip("HierCode subcommand not available")
+        runner = CliRunner()
+        with patch(
+            "scripts.train._resolve_dataset_and_loaders",
+            return_value=("synthetic", loader, loader, "val", 5),
+        ):
+            res_cnn = runner.invoke(
+                train,
+                [
+                    "cnn",
+                    "--epochs",
+                    "1",
+                    "--batch-size",
+                    "4",
+                    "--checkpoint-dir",
+                    str(tmp_path / "cnn_ckpt"),
+                ],
+            )
+            assert res_cnn.exit_code == 0, res_cnn.output
 
-    def test_train_py_qat_subcommand_exists(self):
-        """Test QAT subcommand exists."""
-        try:
-            from scripts.train import train
-
-            assert "qat" in train.commands
-        except (ImportError, AttributeError):
-            pytest.skip("QAT subcommand not available")
+            res_glhpn = runner.invoke(
+                train,
+                [
+                    "glhpn",
+                    "--epochs",
+                    "1",
+                    "--batch-size",
+                    "4",
+                    "--embedding-dim",
+                    "32",
+                    "--top-k",
+                    "4",
+                    "--checkpoint-dir",
+                    str(tmp_path / "glhpn_ckpt"),
+                ],
+            )
+            assert res_glhpn.exit_code == 0, res_glhpn.output
 
 
 class TestMeasureCO2:
@@ -246,106 +284,122 @@ class TestSetupVerification:
             pytest.skip("Function not available")
 
 
-class TestQuantization:
-    """Extended tests for quantization utilities."""
+class TestDatasetsAndRouter:
+    """Tests for src.lib.datasets, src.lib.dataset_router, and safe archive extraction."""
 
-    def test_quantize_model_module_imports(self):
-        """Test quantize_model module imports."""
-        try:
-            from scripts import quantize_model
+    def test_kanji_dataset_handles_grayscale_pil_image(self):
+        """Verify KanjiDataset.__getitem__ converts 2D grayscale PIL images to (1, H, W) tensors."""
+        import numpy as np
+        import torch
+        from PIL import Image
 
-            assert quantize_model is not None
-        except ImportError:
-            pytest.skip("quantize_model not available")
+        from src.lib.datasets import KanjiDataset, create_synthetic_kanji_dataset
 
-    def test_quantize_model_has_quantization_functions(self):
-        """Test that quantization module has expected functions."""
-        try:
-            from scripts.quantize_model import convert_to_int8_static, quantize_to_int8
+        synth = create_synthetic_kanji_dataset(num_samples=20, num_classes=10, image_size=64)
+        assert "train" in synth and "validation" in synth and "test" in synth
 
-            assert convert_to_int8_static is not None
-            assert quantize_to_int8 is not None
-        except (ImportError, AttributeError):
-            pytest.skip("Quantization functions not found")
+        ds = KanjiDataset(synth["train"])
+        img, label = ds[0]
+        assert isinstance(img, torch.Tensor)
+        assert img.shape == (1, 64, 64)
+        assert 0 <= int(label) < 10
 
+        # Also test direct grayscale PIL item
+        gray_pil = Image.fromarray(np.zeros((32, 32), dtype=np.uint8), mode="L")
+        custom_ds = KanjiDataset([{"image": gray_pil, "label": 3}])
+        tensor_img, lbl = custom_ds[0]
+        assert tensor_img.shape == (1, 32, 32)
+        assert lbl == 3
 
-class TestInspectONNX:
-    """Tests for ONNX model inspection utilities."""
+    def test_research_dataset_loader_deterministic_non_overlapping_splits(self, tmp_path):
+        """Verify ResearchDatasetLoader train and test splits are disjoint across calls."""
+        from unittest.mock import patch
 
-    def test_inspect_onnx_module_imports(self):
-        """Test inspect_onnx_model module imports."""
-        try:
-            from scripts import inspect_onnx_model
+        import numpy as np
 
-            assert inspect_onnx_model is not None
-        except ImportError:
-            pytest.skip("inspect_onnx_model not available")
+        from src.lib.datasets import ResearchDatasetLoader
 
-    def test_inspect_onnx_has_inspection_functions(self):
-        """Test that inspection module has expected functions."""
-        try:
-            from scripts.inspect_onnx_model import get_onnx_model_details
+        x = np.arange(20 * 64 * 64, dtype=np.float32).reshape(20, 64 * 64)
+        y = np.arange(20, dtype=np.int64)
 
-            assert get_onnx_model_details is not None
-        except (ImportError, AttributeError):
-            pytest.skip("Inspection functions not found")
+        loader = ResearchDatasetLoader("kanji", data_dir=tmp_path, num_workers=0)
+        with patch.object(loader, "load_dataset", return_value={"X": x, "y": y}):
+            train_dl = loader.get_dataloader(batch_size=4, split="train", shuffle=False)
+            test_dl = loader.get_dataloader(batch_size=4, split="test", shuffle=False)
 
+            train_labels = set()
+            for _, labels in train_dl:
+                train_labels.update(labels.tolist())
 
-class TestPoolingComparison:
-    """Tests for pooling operation comparisons."""
+            test_labels = set()
+            for _, labels in test_dl:
+                test_labels.update(labels.tolist())
 
-    def test_pooling_comparison_module_imports(self):
-        """Test pooling_comparison module imports."""
-        try:
-            from scripts import pooling_comparison
+            assert len(train_labels) == 16
+            assert len(test_labels) == 4
+            assert train_labels.isdisjoint(test_labels)
 
-            assert pooling_comparison is not None
-        except ImportError:
-            pytest.skip("pooling_comparison not available")
+    def test_safe_extract_tar_and_zip_reject_traversal_and_symlinks(self, tmp_path):
+        """Verify safe_extract_tar and safe_extract_zip block path traversal and symlinks."""
+        import io
+        import tarfile
+        import zipfile
 
+        from src.lib.system import safe_extract_tar, safe_extract_zip
 
-class TestONNXOperations:
-    """Tests for ONNX operations comparison."""
+        # 1. Malicious TAR with ../ traversal
+        evil_tar = tmp_path / "evil.tar.gz"
+        with tarfile.open(evil_tar, "w:gz") as tf:
+            info = tarfile.TarInfo(name="../escaped.txt")
+            payload = b"pwned"
+            info.size = len(payload)
+            tf.addfile(info, io.BytesIO(payload))
 
-    def test_onnx_operations_module_imports(self):
-        """Test onnx_operations_comparison module imports."""
-        try:
-            from scripts import onnx_operations_comparison
+        with pytest.raises(ValueError, match="Unsafe tar member"):
+            safe_extract_tar(evil_tar, tmp_path / "out_tar")
 
-            assert onnx_operations_comparison is not None
-        except ImportError:
-            pytest.skip("onnx_operations_comparison not available")
+        # 2. Malicious TAR with symlink
+        symlink_tar = tmp_path / "symlink.tar.gz"
+        with tarfile.open(symlink_tar, "w:gz") as tf:
+            info = tarfile.TarInfo(name="link_to_etc")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "/etc/passwd"
+            tf.addfile(info)
 
+        with pytest.raises(ValueError, match="Unsafe tar member type"):
+            safe_extract_tar(symlink_tar, tmp_path / "out_symlink")
 
-class TestConversionScripts:
-    """Additional tests for conversion utilities."""
+        # 3. Malicious ZIP with ../ traversal
+        evil_zip = tmp_path / "evil.zip"
+        with zipfile.ZipFile(evil_zip, "w") as zf:
+            zf.writestr("../../escaped.txt", "pwned")
 
-    def test_convert_to_onnx_module(self):
-        """Test convert_to_onnx module."""
-        try:
-            from scripts import convert_to_onnx
+        with pytest.raises(ValueError, match="Unsafe zip member"):
+            safe_extract_zip(evil_zip, tmp_path / "out_zip")
 
-            assert convert_to_onnx is not None
-        except ImportError:
-            pytest.skip("convert_to_onnx not available")
+    def test_onnx_analysis_and_dataset_router_and_cli(self):
+        """Verify ONNXModelAnalyzer, DatasetRouter, and CLI utilities."""
+        from scripts.training_args import get_variant_args
+        from src.lib.cli import CLIContext, create_app
+        from src.lib.dataset_router import DatasetRouter
+        from src.lib.onnx_analysis import PoolingComparisonAnalyzer
 
-    def test_export_to_onnx_hiercode(self):
-        """Test export_to_onnx_hiercode module."""
-        try:
-            from scripts import export_to_onnx
+        router = DatasetRouter()
+        available = router.list_datasets()
+        assert "etl" in available and "research" in available
+        assert "etl9g" in available["etl"]
+        assert "megahan97k" in available["research"]
 
-            assert export_to_onnx is not None
-        except ImportError:
-            pytest.skip("export_to_onnx_hiercode not available")
+        cnn_args = get_variant_args("cnn")
+        assert "epochs" in cnn_args and "num_classes" in cnn_args
+        assert cnn_args["num_classes"].default is None
 
-    def test_convert_to_safetensors(self):
-        """Test convert_to_safetensors module."""
-        try:
-            from scripts import convert_to_safetensors
+        app = create_app(name="test-cli")
+        assert app is not None
+        with CLIContext("unit-test-op") as ctx:
+            assert ctx.operation == "unit-test-op"
 
-            assert convert_to_safetensors is not None
-        except ImportError:
-            pytest.skip("convert_to_safetensors not available")
+        assert PoolingComparisonAnalyzer is not None
 
 
 if __name__ == "__main__":

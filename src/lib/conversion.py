@@ -60,7 +60,7 @@ def dequantize_state_dict(state_dict: dict) -> dict:
     quantized_count = 0
 
     for key, value in state_dict.items():
-        if hasattr(value, "dequantize"):
+        if getattr(value, "is_quantized", False) and hasattr(value, "dequantize"):
             dequantized_state[key] = value.dequantize()
             quantized_count += 1
         else:
@@ -75,7 +75,7 @@ def dequantize_state_dict(state_dict: dict) -> dict:
 def infer_num_classes_from_state_dict(state_dict: dict, default: int = 3036) -> int:
     """Infer number of classes from model state dict.
 
-    Searches for classifier layer weights to determine output dimensions.
+    Searches for classifier or final linear layer weights to determine output dimensions.
 
     Args:
         state_dict: PyTorch state dict
@@ -104,6 +104,13 @@ def infer_num_classes_from_state_dict(state_dict: dict, default: int = 3036) -> 
         key, num_classes = classifier_weights[max_layer]
         logger.info(f"  → Found output classifier in '{key}': {num_classes} classes")
         return num_classes
+
+    # Also check standard head names used in src/lib/models.py
+    for head_key in ("fc2.weight", "fc.weight", "fine_head.weight", "head.weight"):
+        if head_key in state_dict and isinstance(state_dict[head_key], torch.Tensor):
+            num_classes = int(state_dict[head_key].shape[0])
+            logger.info(f"  → Found output head in '{head_key}': {num_classes} classes")
+            return num_classes
 
     logger.warning(f"  → Could not infer num_classes, using default: {default}")
     return default
@@ -138,15 +145,21 @@ def load_num_classes_from_config(model_path: str, model_type: str, default: int 
 def load_model_checkpoint(
     model_path: str,
     model_type: str,
+    num_classes: int = 0,
+    image_size: int = 64,
+    allow_unsafe_weights: bool = False,
 ) -> Tuple[torch.nn.Module, int, dict]:
     """Load model from checkpoint and infer num_classes.
 
-    Handles both wrapped checkpoints (with 'model_state_dict') and raw state dicts.
+    Handles both wrapped checkpoints (with 'model_state_dict' or 'state_dict') and raw state dicts.
     Automatically detects INT8 quantization and dequantizes if needed.
 
     Args:
         model_path: Path to model checkpoint
         model_type: Model type (hiercode, cnn, rnn, qat, vit, radical-rnn, hiercode-higita)
+        num_classes: Optional explicit number of classes (0 = auto-infer)
+        image_size: Input image size (default: 64)
+        allow_unsafe_weights: Allow weights_only=False fallback for legacy pickled checkpoints
 
     Returns:
         Tuple of (model, num_classes, checkpoint_info)
@@ -161,14 +174,13 @@ def load_model_checkpoint(
         ... )
         >>> print(f"Model: {model_type}, Classes: {num_classes}")
     """
-    # Import here to avoid circular imports
-    from .config import (
-        CNNConfig,
-        HierCodeConfig,
-        QATConfig,
-        RadicalRNNConfig,
-        RNNConfig,
-        ViTConfig,
+    from .models import (
+        HierCodeHiGITA,
+        HierCodeNet,
+        KanjiRNN,
+        KanjiViT,
+        LightweightKanjiNet,
+        QuantizableLightweightKanjiNet,
     )
 
     model_path_obj = Path(model_path)
@@ -178,71 +190,49 @@ def load_model_checkpoint(
 
     logger.info("→ Loading model from %s...", model_path)
 
-    # Load checkpoint
-    checkpoint = torch.load(model_path_obj, map_location="cpu")
+    # Load checkpoint safely with weights_only=True by default
+    try:
+        checkpoint = torch.load(model_path_obj, map_location="cpu", weights_only=True)
+    except Exception:
+        if allow_unsafe_weights:
+            checkpoint = torch.load(model_path_obj, map_location="cpu", weights_only=False)
+        else:
+            raise
 
     # Extract model_state_dict if checkpoint is wrapped
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         model_state_dict = checkpoint["model_state_dict"]
+    elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        model_state_dict = checkpoint["state_dict"]
     else:
         model_state_dict = checkpoint
 
-    # Check if model is INT8 quantized
-    is_quantized = any(hasattr(v, "dequantize") for v in model_state_dict.values())
+    # Check if model is INT8 quantized (check value.is_quantized rather than tensor method existence)
+    is_quantized = any(getattr(v, "is_quantized", False) for v in model_state_dict.values())
 
     # Infer num_classes from state dict, fallback to config file
-    num_classes = infer_num_classes_from_state_dict(model_state_dict)
-    if num_classes == 43427:  # If using default
-        num_classes = load_num_classes_from_config(model_path, model_type)
+    if num_classes <= 0:
+        inferred = infer_num_classes_from_state_dict(model_state_dict, default=-1)
+        if inferred <= 0:
+            num_classes = load_num_classes_from_config(model_path, model_type, default=3036)
+        else:
+            num_classes = inferred
 
-    # Import model architectures
-    try:
-        # Try importing from scripts directory (for conversion scripts)
-        import sys
-        from pathlib import Path as PathlibPath
+    normalized_type = model_type.lower().replace("_", "-")
 
-        scripts_path = PathlibPath(__file__).parent.parent.parent / "scripts"
-        if scripts_path.exists():
-            sys.path.insert(0, str(scripts_path))
-
-        from train_cnn_model import LightweightKanjiNet  # noqa: E402
-        from train_hiercode import HierCodeClassifier  # noqa: E402
-        from train_qat import QuantizableLightweightKanjiNet  # noqa: E402
-        from train_radical_rnn import RadicalRNNClassifier  # noqa: E402
-        from train_rnn import KanjiRNN  # noqa: E402
-        from train_vit import VisionTransformer  # noqa: E402
-    except ImportError as e:
-        logger.error(f"Failed to import model architectures: {e}")
-        raise
-
-    # Create model based on type
-    if model_type == "hiercode":
-        config = HierCodeConfig(num_classes=num_classes)
-        model = HierCodeClassifier(num_classes=num_classes, config=config)
-    elif model_type == "hiercode-higita":
-        config = HierCodeConfig(num_classes=num_classes)
-        try:
-            from train_hiercode_higita import HierCodeWithHiGITA
-
-            model = HierCodeWithHiGITA(num_classes=num_classes)
-        except ImportError:
-            logger.error("HierCode-HiGITA not available")
-            raise
-    elif model_type == "cnn":
-        config = CNNConfig(num_classes=num_classes)
-        model = LightweightKanjiNet(num_classes=num_classes)
-    elif model_type == "qat":
-        config = QATConfig(num_classes=num_classes)
-        model = QuantizableLightweightKanjiNet(num_classes=num_classes)
-    elif model_type == "rnn":
-        config = RNNConfig(num_classes=num_classes)
-        model = KanjiRNN(num_classes=num_classes)
-    elif model_type == "radical-rnn":
-        config = RadicalRNNConfig(num_classes=num_classes)
-        model = RadicalRNNClassifier(num_classes=num_classes, config=config)
-    elif model_type == "vit":
-        config = ViTConfig(num_classes=num_classes)
-        model = VisionTransformer(num_classes=num_classes, config=config)
+    # Create model based on type using consolidated src.lib.models
+    if normalized_type == "hiercode":
+        model: torch.nn.Module = HierCodeNet(num_classes=num_classes, image_size=image_size)
+    elif normalized_type == "hiercode-higita":
+        model = HierCodeHiGITA(num_classes=num_classes, image_size=image_size)
+    elif normalized_type == "cnn":
+        model = LightweightKanjiNet(num_classes=num_classes, image_size=image_size)
+    elif normalized_type == "qat":
+        model = QuantizableLightweightKanjiNet(num_classes=num_classes, image_size=image_size)
+    elif normalized_type in ("rnn", "radical-rnn"):
+        model = KanjiRNN(num_classes=num_classes, image_size=image_size)
+    elif normalized_type == "vit":
+        model = KanjiViT(num_classes=num_classes, image_size=image_size)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -348,20 +338,35 @@ def quantize_model_int8(
     )
     logger.info("  → Original model size: %.2f MB", original_size / 1e6)
 
-    # Dynamic quantization requires CPU
+    # Dynamic quantization requires CPU and supports Linear, LSTM, GRU
     logger.info("  → Applying INT8 quantization...")
     model_cpu = model.cpu()
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=DeprecationWarning)
+        # Set quantization engine to qnnpack on ARM/macOS when fbgemm is unavailable
+        supported_engines = getattr(torch.backends.quantized, "supported_engines", [])
+        if "fbgemm" in supported_engines:
+            torch.backends.quantized.engine = "fbgemm"
+        elif "qnnpack" in supported_engines:
+            torch.backends.quantized.engine = "qnnpack"
+
         quantized_model = torch.quantization.quantize_dynamic(
-            model_cpu, {torch.nn.Linear, torch.nn.Conv2d}, dtype=torch.qint8
+            model_cpu,
+            {torch.nn.Linear, torch.nn.LSTM, torch.nn.GRU},
+            dtype=torch.qint8,
         )
 
-    quantized_model = quantized_model.to(device)
+    # Note: PyTorch dynamic quantized ops run on CPU; only move if device is cpu
+    if device == "cpu":
+        quantized_model = quantized_model.to(device)
     logger.info("✓ INT8 quantization complete")
 
-    # For dynamic quantization, actual size measured after saving
-    quantized_size = 0  # Will be updated when saved
+    # Estimate quantized size from serialized buffer
+    import io
+
+    buf = io.BytesIO()
+    torch.save(quantized_model.state_dict(), buf)
+    quantized_size = buf.tell()
 
     return quantized_model, original_size, quantized_size
 
@@ -873,8 +878,16 @@ def quantize_model(
     # Calculate quantized size
     quantized_state = quantized_model.state_dict()
     quantized_size = sum(
-        v.numel() * v.element_size() for v in quantized_state.values() if v is not None
+        v.numel() * v.element_size()
+        for v in quantized_state.values()
+        if isinstance(v, torch.Tensor)
     )
+    if quantized_size == 0:
+        import io
+
+        buf = io.BytesIO()
+        torch.save(quantized_state, buf)
+        quantized_size = buf.tell()
 
     ratio, percent = calculate_compression_ratio(original_size, quantized_size)
     metadata["original_size_mb"] = original_size / 1e6

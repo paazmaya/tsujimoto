@@ -378,6 +378,210 @@ class TestMultiGranular:
         assert loss.item() > 0
         assert not torch.isnan(loss)
 
+    def test_cross_level_consistency_loss(self):
+        """Test CrossLevelConsistencyLoss projects across 128 -> 256 -> 512 dimensions."""
+        from src.lib.granular_encoders import (
+            CrossLevelConsistencyLoss,
+            MultiGranularityFusionModule,
+        )
+
+        consistency = CrossLevelConsistencyLoss(stroke_dim=128, radical_dim=256, character_dim=512)
+        stroke_emb = torch.randn(4, 128, requires_grad=True)
+        radical_emb = torch.randn(4, 256, requires_grad=True)
+        char_emb = torch.randn(4, 512, requires_grad=True)
+
+        loss = consistency(stroke_emb, radical_emb, char_emb)
+        assert loss.ndim == 0
+        assert loss.item() >= 0
+        loss.backward()
+        assert stroke_emb.grad is not None
+
+        fusion = MultiGranularityFusionModule(stroke_dim=128, radical_dim=256, character_dim=512)
+        fused_out = fusion(stroke_emb.detach(), radical_emb.detach(), char_emb.detach())
+        assert fused_out.shape == (4, 512)
+
+    def test_ids_validator_and_igca(self):
+        """Test IDSValidator and IDSGuidedConfidenceAdjustment from dual_decoder."""
+        from src.lib.dual_decoder import IDSGuidedConfidenceAdjustment, IDSValidator
+
+        validator = IDSValidator()
+        validator.add_character_ids(0, [0, 10, 11])
+        pred_logits = torch.zeros(3, 16)
+        pred_logits[0, 0] = 5.0
+        pred_logits[1, 10] = 5.0
+        pred_logits[2, 11] = 5.0
+        conf = validator.validate_ids(0, pred_logits)
+        assert isinstance(conf, float)
+        assert conf == 1.0
+
+        igca = IDSGuidedConfidenceAdjustment()
+        logits = torch.randn(4, 20)
+        ids_conf = torch.tensor([0.9, 0.2, 0.8, 0.5])
+        agreement = torch.tensor([0.85, 0.1, 0.9, 0.4])
+        adjusted = igca(logits, ids_conf, agreement)
+        assert adjusted.shape == (4, 20)
+
+    def test_restoration_preprocessor_all_methods(self):
+        """Test TraditionalBinarization (otsu, kmeans, adaptive) and RestorationPreprocessor."""
+        from src.lib.restoration import (
+            RestorationPreprocessor,
+            TraditionalBinarization,
+            create_restoration_preprocessor,
+        )
+
+        img = torch.rand(2, 3, 32, 32)
+        for method in ["otsu", "kmeans", "adaptive"]:
+            binarizer = TraditionalBinarization(method=method)
+            out = binarizer(img)
+            assert out.shape == (2, 1, 32, 32)
+            assert ((out == 0) | (out == 1)).all()
+
+        preprocessor = create_restoration_preprocessor(
+            method="otsu", with_seal_removal=True, with_denoising=True
+        )
+        assert isinstance(preprocessor, RestorationPreprocessor)
+        result = preprocessor(img)
+        assert "restored" in result
+        assert "seal_mask" in result
+        assert result["restored"].shape[0] == 2
+
+
+class TestLightningModulesAllPhases:
+    """Test all Lightning modules in src/lib/lightning_module.py."""
+
+    def test_kanji_recognition_lightning_module(self):
+        """Test base KanjiRecognitionLightningModule training, validation, and optimizer setup."""
+        from src.lib.config import CNNConfig
+        from src.lib.lightning_module import KanjiRecognitionLightningModule
+        from src.lib.models import LightweightKanjiNet
+
+        cfg = CNNConfig(
+            num_classes=10, epochs=5, batch_size=4, optimizer="adamw", scheduler="cosine"
+        )
+        model = LightweightKanjiNet(num_classes=10)
+        pl_mod = KanjiRecognitionLightningModule(model=model, config=cfg)
+
+        images = torch.randn(4, 1, 64, 64)
+        labels = torch.randint(0, 10, (4,))
+        loss = pl_mod.training_step((images, labels), 0)
+        assert loss.ndim == 0 and loss.item() > 0
+        pl_mod.validation_step((images, labels), 0)
+        pl_mod.test_step((images, labels), 0)
+
+        opt_cfg = pl_mod.configure_optimizers()
+        assert "optimizer" in opt_cfg
+        assert "lr_scheduler" in opt_cfg
+
+    def test_phase_1_to_6_lightning_modules(self):
+        """Test GLHPN, DTRNet, DegradationAware, Trajectory, MultiGranular, and RestorationPipeline Lightning modules."""
+        from src.lib.config import (
+            DegradationAwareConfig,
+            DTRNetConfig,
+            GLHPNConfig,
+            MultiGranularConfig,
+            RestorationPipelineConfig,
+            TrajectoryConfig,
+        )
+        from src.lib.degradation import create_degradation_pipeline
+        from src.lib.dual_decoder import DTRNetModule
+        from src.lib.granular_encoders import (
+            FinegrainedDecoupledContrastiveLoss,
+            create_multigranular_encoders,
+        )
+        from src.lib.hierarchical_retrieval import create_glhpn_retriever
+        from src.lib.lightning_module import (
+            DegradationAwareLightningModule,
+            DTRNetLightningModule,
+            GLHPNLightningModule,
+            MultiGranularLightningModule,
+            RestorationPipelineLightningModule,
+            TrajectoryLightningModule,
+        )
+        from src.lib.models import LightweightKanjiNet
+        from src.lib.restoration import create_restoration_preprocessor
+        from src.lib.restoration_pipeline import create_pipeline
+        from src.lib.trajectory_processing import HybridTrajectoryVisionModel
+
+        # Phase 1: GLHPN
+        glhpn_cfg = GLHPNConfig(embedding_dim=64, top_k_candidates=10, epochs=2)
+        backbone = LightweightKanjiNet(num_classes=10)
+        retriever = create_glhpn_retriever(
+            backbone_output_dim=10, embedding_dim=64, top_k_candidates=5
+        )
+        m1 = GLHPNLightningModule(backbone, retriever, glhpn_cfg)
+        loss1 = m1.training_step((torch.randn(2, 1, 64, 64), torch.randint(0, 10, (2,))), 0)
+        assert loss1.item() > 0
+        assert "optimizer" in m1.configure_optimizers()
+
+        # Phase 2: DTRNet
+        dtr_cfg = DTRNetConfig(text_hidden_dim=64, radical_hidden_dim=32, epochs=2)
+        dtrnet = DTRNetModule(
+            input_dim=32, text_hidden_dim=64, radical_hidden_dim=32, num_character_classes=10
+        )
+        m2 = DTRNetLightningModule(dtrnet, dtr_cfg)
+        loss2 = m2.training_step((torch.randn(2, 4, 32), torch.randint(0, 10, (2,))), 0)
+        assert loss2.item() > 0
+
+        # Phase 3: DegradationAware
+        deg_cfg = DegradationAwareConfig(restoration_enabled=True, epochs=2)
+        m3 = DegradationAwareLightningModule(
+            LightweightKanjiNet(num_classes=10),
+            create_degradation_pipeline(degradation_types=["blur"]),
+            create_restoration_preprocessor(),
+            deg_cfg,
+        )
+        loss3 = m3.training_step((torch.rand(2, 1, 64, 64), torch.randint(0, 10, (2,))), 0)
+        assert loss3.item() > 0
+
+        # Phase 4: Trajectory
+        traj_cfg = TrajectoryConfig(max_strokes=10, trajectory_embedding_dim=32, epochs=2)
+        hybrid = HybridTrajectoryVisionModel(
+            image_feature_dim=512, trajectory_embedding_dim=32, num_classes=10
+        )
+        m4 = TrajectoryLightningModule(hybrid, traj_cfg)
+        loss4 = m4.training_step(
+            (torch.randn(2, 1, 32, 32), torch.randn(2, 32), torch.randint(0, 10, (2,))), 0
+        )
+        assert loss4.item() > 0
+
+        # Phase 5: MultiGranular
+        mg_cfg = MultiGranularConfig(epochs=2)
+        encoders = create_multigranular_encoders()
+        m5 = MultiGranularLightningModule(encoders, FinegrainedDecoupledContrastiveLoss(), mg_cfg)
+        loss5 = m5.training_step(
+            (
+                torch.randn(2, 256),
+                torch.randn(2, 256),
+                torch.randn(2, 512),
+                torch.randint(0, 100, (2, 8)),
+                torch.randint(0, 10, (2,)),
+            ),
+            0,
+        )
+        assert loss5.item() > 0
+
+        # Phase 6: RestorationPipeline
+        rp_cfg = RestorationPipelineConfig(epochs=2)
+        rgb_backbone = nn.Sequential(
+            nn.Conv2d(3, 16, 3, padding=1),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.Linear(16, 512),
+        )
+        pipe, pipe_trainer = create_pipeline(rgb_backbone)
+        m6 = RestorationPipelineLightningModule(pipe, pipe_trainer, rp_cfg)
+        det_out = pipe.detector(torch.rand(2, 3, 64, 64))
+        loss6 = m6.training_step(
+            (
+                torch.rand(2, 3, 64, 64),
+                torch.zeros_like(det_out),
+                torch.rand(2, 3, 64, 64),
+                torch.randint(0, 10, (2,)),
+            ),
+            0,
+        )
+        assert loss6.item() > 0
+
 
 # ============================================================================
 # PHASE 6: Restoration Pipeline Tests

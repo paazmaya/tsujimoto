@@ -351,16 +351,17 @@ class TestASCIIReadingExtraction:
         assert result["ascii_reading"] == "testread"
 
     def test_etl9g_ascii_reading_extraction(self):
-        """Test ETL9G extracts ASCII reading correctly."""
+        """Test ETL9G extracts 8-byte ASCII reading correctly."""
         handler = ETL9GHandler()
         record = bytearray(8199)
-        # Add reading at bytes 4-11
-        record[4:12] = b"kanjichar"
+        # Add 8-byte reading at bytes 4-12
+        record[4:12] = b"kanjichr"
 
         result = handler.extract_record_info(bytes(record))
 
         assert result is not None
         assert "ascii_reading" in result
+        assert result["ascii_reading"] == "kanjichr"
 
 
 if __name__ == "__main__":

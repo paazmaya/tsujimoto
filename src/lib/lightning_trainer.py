@@ -191,7 +191,7 @@ class LightningTrainer:
             return self.model
 
         logger.info(f"Loading best model from {self.best_model_path}")
-        checkpoint = torch.load(self.best_model_path)
+        checkpoint = torch.load(self.best_model_path, map_location="cpu", weights_only=True)
 
         # Handle Lightning checkpoint format
         if "state_dict" in checkpoint:

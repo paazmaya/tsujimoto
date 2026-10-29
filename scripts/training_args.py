@@ -133,8 +133,8 @@ IMAGE_ARGS = {
     "num_classes": ArgumentDefinition(
         name="num_classes",
         arg_type=int,
-        default=43427,
-        help_text="Number of character classes",
+        default=None,
+        help_text="Number of character classes (auto-detected from dataset if omitted)",
     ),
 }
 
@@ -154,7 +154,14 @@ RNN_ARGS = {
         name="model_type",
         arg_type=str,
         default="hybrid_cnn_rnn",
-        choices=["basic_rnn", "stroke_rnn", "radical_rnn", "hybrid_cnn_rnn"],
+        choices=[
+            "basic_rnn",
+            "stroke_rnn",
+            "simple_radical_rnn",
+            "radical_rnn",
+            "hybrid_cnn_rnn",
+            "linguistic_radical_rnn",
+        ],
         help_text="Type of RNN model",
     ),
     "weight_decay": ArgumentDefinition(

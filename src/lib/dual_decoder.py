@@ -252,7 +252,7 @@ class IDSValidator(nn.Module):
         predicted_ids_np = predicted_ids.argmax(dim=-1).cpu().numpy()
 
         # Check if predicted IDS matches (allowing some flexibility)
-        matches = sum(1 for p, v in zip(predicted_ids_np, valid_ids) if p == v)
+        matches = sum(1 for p, v in zip(predicted_ids_np, valid_ids, strict=False) if p == v)
 
         # Validity score based on match ratio
         validity_score = matches / max(len(valid_ids), 1)
@@ -378,6 +378,8 @@ class DTRNetModule(nn.Module):
         input_dim: int = 512,
         num_character_classes: int = 3036,
         num_ids_tokens: int = 64,
+        text_hidden_dim: int = 1024,
+        radical_hidden_dim: int = 512,
         text_decoder_type: str = "gru",
         radical_decoder_type: str = "gru",
         structure_agreement_weight: float = 0.3,
@@ -390,6 +392,8 @@ class DTRNetModule(nn.Module):
             input_dim: Input feature dimension
             num_character_classes: Number of character classes
             num_ids_tokens: Number of IDS operator types
+            text_hidden_dim: Hidden dimension for text decoder
+            radical_hidden_dim: Hidden dimension for radical decoder
             text_decoder_type: Text decoder type
             radical_decoder_type: Radical decoder type
             structure_agreement_weight: Weight for structure agreement loss
@@ -399,12 +403,14 @@ class DTRNetModule(nn.Module):
 
         self.text_decoder = TextDecoder(
             input_dim=input_dim,
+            hidden_dim=text_hidden_dim,
             num_classes=num_character_classes,
             decoder_type=text_decoder_type,
         )
 
         self.radical_decoder = RadicalDecoder(
             input_dim=input_dim,
+            hidden_dim=radical_hidden_dim,
             num_ids_tokens=num_ids_tokens,
             decoder_type=radical_decoder_type,
         )

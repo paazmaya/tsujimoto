@@ -132,7 +132,7 @@ def load_best_model_for_testing(model, best_model_path: Path, device: str = "cpu
     Example:
         >>> load_best_model_for_testing(model, Path("best_model.pth"), device="cuda")
     """
-    model.load_state_dict(torch.load(best_model_path, map_location=device))
+    model.load_state_dict(torch.load(best_model_path, map_location=device, weights_only=True))
     logger.info(f"✓ Loaded best model from {best_model_path}")
 
 

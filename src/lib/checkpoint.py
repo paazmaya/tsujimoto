@@ -7,9 +7,11 @@ Provides unified checkpoint handling with automatic resume from latest checkpoin
 import logging
 import re
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
+import torch.nn as nn
+from torch.optim import Optimizer
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -17,25 +19,27 @@ logger: logging.Logger = logging.getLogger(__name__)
 class CheckpointManager:
     """Manages training checkpoints with automatic resume capabilities."""
 
-    def __init__(self, checkpoint_dir: str, approach_name: str) -> None:
+    def __init__(self, checkpoint_dir: str, approach_name: str, keep_last_n: int = 5) -> None:
         """
         Initialize checkpoint manager.
 
         Args:
             checkpoint_dir: Checkpoint directory (e.g., "training/cnn/checkpoints")
             approach_name: Training approach name (e.g., "cnn", "rnn", "hiercode", "vit", "qat")
+            keep_last_n: Number of recent checkpoints to retain
         """
         self.approach_dir = Path(checkpoint_dir)
         self.approach_name: str = approach_name
+        self.keep_last_n: int = keep_last_n
         self.approach_dir.mkdir(parents=True, exist_ok=True)
 
     def save_checkpoint(
         self,
         epoch: int,
-        model,
-        optimizer,
-        scheduler,
-        metrics: Optional[Dict] = None,
+        model: nn.Module,
+        optimizer: Optional[Optimizer],
+        scheduler: Optional[Any],
+        metrics: Optional[Dict[str, Any]] = None,
         is_best: bool = False,
     ) -> Path:
         """
@@ -55,7 +59,7 @@ class CheckpointManager:
         checkpoint_data = {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict() if optimizer is not None else None,
             "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
             "metrics": metrics or {},
         }
@@ -74,8 +78,13 @@ class CheckpointManager:
         return checkpoint_path
 
     def load_checkpoint(
-        self, checkpoint_path: Path, model, optimizer, scheduler
-    ) -> Tuple[int, Dict]:
+        self,
+        checkpoint_path: Path,
+        model: nn.Module,
+        optimizer: Optional[Optimizer],
+        scheduler: Optional[Any],
+        allow_unsafe_weights: bool = False,
+    ) -> Tuple[int, Dict[str, Any]]:
         """
         Load training checkpoint.
 
@@ -84,16 +93,24 @@ class CheckpointManager:
             model: Model to load state into
             optimizer: Optimizer to load state into
             scheduler: Scheduler to load state into
+            allow_unsafe_weights: Whether to fall back to weights_only=False
 
         Returns:
             Tuple of (epoch, metrics_dict)
         """
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+        except Exception:
+            if allow_unsafe_weights:
+                checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+            else:
+                raise
 
         model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if optimizer is not None and checkpoint.get("optimizer_state_dict") is not None:
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-        if scheduler and checkpoint["scheduler_state_dict"]:
+        if scheduler and checkpoint.get("scheduler_state_dict"):
             scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
         epoch = checkpoint["epoch"]
@@ -172,9 +189,10 @@ class CheckpointManager:
             if checkpoint_path.exists():
                 logger.info(f"📂 Loading checkpoint from: {resume_from}")
                 try:
-                    checkpoint = torch.load(checkpoint_path, map_location=device)
+                    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
                     model.load_state_dict(checkpoint["model_state_dict"])
-                    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+                    if optimizer is not None and checkpoint.get("optimizer_state_dict") is not None:
+                        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                     if scheduler and checkpoint.get("scheduler_state_dict"):
                         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
@@ -198,9 +216,10 @@ class CheckpointManager:
         if latest_checkpoint:
             logger.info(f"🔄 Auto-detected checkpoint: {latest_checkpoint.name}")
             try:
-                checkpoint = torch.load(latest_checkpoint, map_location=device)
+                checkpoint = torch.load(latest_checkpoint, map_location=device, weights_only=True)
                 model.load_state_dict(checkpoint["model_state_dict"])
-                optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+                if optimizer is not None and checkpoint.get("optimizer_state_dict") is not None:
+                    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 if scheduler and checkpoint.get("scheduler_state_dict"):
                     scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 

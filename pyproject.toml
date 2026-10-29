@@ -92,28 +92,20 @@ packages = ["torch", "torchvision"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py38"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "ISC", "PIE", "T20", "Q"]
-ignore = ["E501", "S101", "S311"]
+ignore = ["E501", "S101", "S311", "UP006", "UP007", "UP035", "UP045"]
 
 # ML/data science code uses uppercase variable names for matrices and tensors (X, Y, K, Q, V, etc.)
 [tool.ruff.lint.per-file-ignores]
-"scripts/train_cnn_model.py" = ["N806"]
-"scripts/train_vit.py" = ["N806"]
-"scripts/train_qat.py" = ["N806"]
-"scripts/train_hiercode.py" = ["N806"]
-"scripts/train_radical_rnn.py" = ["N806"]
-"scripts/train_hiercode_higita.py" = ["N806"]
-"scripts/optimization_config.py" = ["N806"]
 "scripts/load_multi_etl.py" = ["N806"]
 "scripts/prepare_dataset.py" = ["N806"]
-"scripts/convert_to_safetensors.py" = ["N806"]
-"scripts/convert_to_onnx.py" = ["N806"]
-"scripts/quantize_model.py" = ["N806"]
-"scripts/verify_etl9g_setup.py" = ["N806"]
-"scripts/rnn/rnn_model.py" = ["N806"]
+"scripts/prepare_research_dataset.py" = ["N806"]
+"src/lib/datasets.py" = ["N806", "N803"]
+"src/lib/dataset_router.py" = ["N806"]
+"tests/**" = ["S108"]
 
 [tool.pytest.ini_options]
 # Ignore known deprecation warnings from external libraries

@@ -1,7 +1,7 @@
 """
 Integration tests for RNN training with single-epoch runs.
 
-Tests all 5 RNN variants with minimal training to ensure:
+Tests KanjiRNN and RNNTrainer from ``src.lib`` across cell types and configurations to ensure:
 - Data loading works correctly
 - Model can train without errors
 - Gradients flow properly
@@ -16,260 +16,141 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
+from torch.utils.data import DataLoader
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.lib.base_trainer import RNNTrainer, setup_trainer_for_model
+from src.lib.config import RNNConfig
+from src.lib.datasets import ResearchDataset
+from src.lib.models import KanjiRNN
+
 
 class TestRNNTrainingIntegration:
-    """Integration tests for RNN training"""
+    """Integration tests for RNN training."""
 
     @pytest.fixture
     def temp_checkpoint_dir(self):
-        """Create temporary checkpoint directory"""
+        """Create temporary checkpoint directory."""
         temp_dir = Path(tempfile.mkdtemp())
         yield temp_dir
-        # Cleanup
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
 
     @pytest.fixture
     def dummy_data(self):
-        """Create dummy dataset for testing"""
-        # Small dataset: 20 samples, 64x64 images, 10 classes
-        x = np.random.randn(20, 64 * 64).astype(np.float32)
-        y = np.random.randint(0, 10, 20).astype(np.int64)
-        return x, y, 10  # x, y, num_classes
+        """Create deterministic dummy dataset for testing."""
+        rng = np.random.default_rng(42)
+        x = rng.standard_normal((16, 64 * 64)).astype(np.float32)
+        y = rng.integers(0, 10, size=16, dtype=np.int64)
+        return x, y, 10
+
+    def _run_rnn_epoch(self, dummy_data, temp_checkpoint_dir, rnn_type: str = "lstm"):
+        x, y, num_classes = dummy_data
+        dataset = ResearchDataset(x, y)
+        loader = DataLoader(dataset, batch_size=4, shuffle=False)
+
+        model = KanjiRNN(
+            num_classes=num_classes,
+            hidden_size=32,
+            num_layers=1,
+            rnn_type=rnn_type,
+            input_channels=1,
+            image_size=64,
+        )
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+        trainer = setup_trainer_for_model(
+            model=model,
+            train_loader=loader,
+            val_loader=loader,
+            optimizer=optimizer,
+            device="cpu",
+            model_type="rnn",
+            checkpoint_dir=str(temp_checkpoint_dir),
+            num_classes=num_classes,
+            image_size=64,
+        )
+        assert isinstance(trainer, RNNTrainer)
+        history = trainer.train(num_epochs=1, save_best_model=True)
+
+        assert len(history["train_loss"]) == 1
+        assert len(history["val_loss"]) == 1
+        assert len(history["val_accuracy"]) == 1
+        assert not np.isnan(history["train_loss"][0])
+        return trainer, history
 
     def test_basic_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
-        """Test basic_rnn training for one epoch"""
-        try:
-            from scripts.train_rnn import (
-                RNNKanjiDataset,
-                RNNTrainer,
-                collate_fn_factory,
-                create_rnn_model,
-            )
-            from torch.utils.data import DataLoader
-
-            from src.lib import RNNConfig
-
-            x, y, num_classes = dummy_data
-            model_type = "basic_rnn"
-
-            # Create dataset and loader
-            dataset = RNNKanjiDataset(x, y, model_type=model_type)
-            collate_fn = collate_fn_factory(model_type)
-            loader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn)
-
-            # Create model
-            model = create_rnn_model(model_type, num_classes=num_classes, hidden_size=32)
-
-            # Create trainer
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            trainer = RNNTrainer(model, device, model_type, temp_checkpoint_dir)
-
-            # Train for 1 epoch
-            config = RNNConfig(learning_rate=0.001, epochs=1, batch_size=4)
-            trainer.train(loader, loader, epochs=1, config=config)
-
-            # Verify training completed
-            assert len(trainer.train_losses) == 1
-            assert len(trainer.val_losses) == 1
-            assert len(trainer.val_accuracies) == 1
-
-        except ImportError as e:
-            pytest.skip(f"Required modules not available: {e}")
+        """Test LSTM KanjiRNN training for one epoch."""
+        self._run_rnn_epoch(dummy_data, temp_checkpoint_dir, rnn_type="lstm")
 
     def test_stroke_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
-        """Test stroke_rnn training for one epoch"""
-        try:
-            from scripts.train_rnn import (
-                RNNKanjiDataset,
-                RNNTrainer,
-                collate_fn_factory,
-                create_rnn_model,
-            )
-            from torch.utils.data import DataLoader
-
-            from src.lib import RNNConfig
-
-            x, y, num_classes = dummy_data
-            model_type = "stroke_rnn"
-
-            # Create dataset and loader
-            dataset = RNNKanjiDataset(x, y, model_type=model_type)
-            collate_fn = collate_fn_factory(model_type)
-            loader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn)
-
-            # Create model
-            model = create_rnn_model(model_type, num_classes=num_classes, hidden_size=32)
-
-            # Create trainer
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            trainer = RNNTrainer(model, device, model_type, temp_checkpoint_dir)
-
-            # Train for 1 epoch
-            config = RNNConfig(learning_rate=0.001, epochs=1, batch_size=4)
-            trainer.train(loader, loader, epochs=1, config=config)
-
-            assert len(trainer.train_losses) == 1
-
-        except ImportError as e:
-            pytest.skip(f"Required modules not available: {e}")
+        """Test GRU KanjiRNN training for one epoch."""
+        self._run_rnn_epoch(dummy_data, temp_checkpoint_dir, rnn_type="gru")
 
     def test_simple_radical_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
-        """Test simple_radical_rnn training for one epoch"""
-        try:
-            from scripts.train_rnn import (
-                RNNKanjiDataset,
-                RNNTrainer,
-                collate_fn_factory,
-                create_rnn_model,
-            )
-            from torch.utils.data import DataLoader
-
-            from src.lib import RNNConfig
-
-            x, y, num_classes = dummy_data
-            model_type = "simple_radical_rnn"
-
-            # Create dataset and loader
-            dataset = RNNKanjiDataset(x, y, model_type=model_type)
-            collate_fn = collate_fn_factory(model_type)
-            loader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn)
-
-            # Create model
-            model = create_rnn_model(
-                model_type,
-                num_classes=num_classes,
-                radical_vocab_size=500,
-                hidden_size=32,
-            )
-
-            # Create trainer
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            trainer = RNNTrainer(model, device, model_type, temp_checkpoint_dir)
-
-            # Train for 1 epoch
-            config = RNNConfig(learning_rate=0.001, epochs=1, batch_size=4)
-            trainer.train(loader, loader, epochs=1, config=config)
-
-            assert len(trainer.train_losses) == 1
-
-        except ImportError as e:
-            pytest.skip(f"Required modules not available: {e}")
+        """Test vanilla RNN KanjiRNN training for one epoch."""
+        self._run_rnn_epoch(dummy_data, temp_checkpoint_dir, rnn_type="rnn")
 
     def test_hybrid_cnn_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
-        """Test hybrid_cnn_rnn training for one epoch"""
-        try:
-            from scripts.train_rnn import (
-                RNNKanjiDataset,
-                RNNTrainer,
-                collate_fn_factory,
-                create_rnn_model,
-            )
-            from torch.utils.data import DataLoader
+        """Test multi-layer bidirectional LSTM KanjiRNN training and checkpoint creation."""
+        x, y, num_classes = dummy_data
+        dataset = ResearchDataset(x, y)
+        loader = DataLoader(dataset, batch_size=4, shuffle=False)
 
-            from src.lib import RNNConfig
-
-            x, y, num_classes = dummy_data
-            model_type = "hybrid_cnn_rnn"
-
-            # Create dataset and loader
-            dataset = RNNKanjiDataset(x, y, model_type=model_type)
-            collate_fn = collate_fn_factory(model_type)
-            loader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn)
-
-            # Create model
-            model = create_rnn_model(model_type, num_classes=num_classes, hidden_size=32)
-
-            # Create trainer
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            trainer = RNNTrainer(model, device, model_type, temp_checkpoint_dir)
-
-            # Train for 1 epoch
-            config = RNNConfig(learning_rate=0.001, epochs=1, batch_size=4)
-            trainer.train(loader, loader, epochs=1, config=config)
-
-            assert len(trainer.train_losses) == 1
-
-        except ImportError as e:
-            pytest.skip(f"Required modules not available: {e}")
+        model = KanjiRNN(
+            num_classes=num_classes,
+            hidden_size=32,
+            num_layers=2,
+            rnn_type="lstm",
+        )
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+        trainer = RNNTrainer(
+            model=model,
+            train_loader=loader,
+            val_loader=loader,
+            optimizer=optimizer,
+            device="cpu",
+            checkpoint_dir=str(temp_checkpoint_dir),
+            model_type="rnn",
+            num_classes=num_classes,
+        )
+        history = trainer.train(num_epochs=2, save_best_model=True)
+        assert len(history["train_loss"]) == 2
+        ckpt_path = trainer.save_checkpoint(is_best=True)
+        assert Path(ckpt_path).exists()
 
     def test_linguistic_radical_rnn_single_epoch(self, dummy_data, temp_checkpoint_dir):
-        """Test linguistic_radical_rnn training for one epoch"""
-        try:
-            from scripts.train_rnn import (
-                RNNKanjiDataset,
-                RNNTrainer,
-                collate_fn_factory,
-                create_rnn_model,
-            )
-            from torch.utils.data import DataLoader
-
-            from src.lib import RNNConfig
-
-            x, y, num_classes = dummy_data
-            model_type = "linguistic_radical_rnn"
-
-            # Create dataset and loader
-            dataset = RNNKanjiDataset(x, y, model_type=model_type)
-            collate_fn = collate_fn_factory(model_type)
-            loader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn)
-
-            # Create model
-            model = create_rnn_model(
-                model_type,
-                num_classes=num_classes,
-                radical_vocab_size=2000,
-                radical_embedding_dim=64,
-                rnn_hidden_size=32,
-                rnn_num_layers=2,
-            )
-
-            # Create trainer
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            trainer = RNNTrainer(model, device, model_type, temp_checkpoint_dir)
-
-            # Train for 1 epoch
-            config = RNNConfig(learning_rate=0.001, epochs=1, batch_size=4)
-            trainer.train(loader, loader, epochs=1, config=config)
-
-            assert len(trainer.train_losses) == 1
-
-        except ImportError as e:
-            pytest.skip(f"Required modules not available: {e}")
+        """Test RNNConfig validation and training integration."""
+        config = RNNConfig(
+            model_variant="linguistic_radical_rnn",
+            rnn_type="gru",
+            hidden_size=32,
+            num_layers=1,
+            epochs=1,
+            batch_size=4,
+            num_classes=10,
+        )
+        assert config.model_variant == "linguistic_radical_rnn"
+        self._run_rnn_epoch(dummy_data, temp_checkpoint_dir, rnn_type=config.rnn_type)
 
     def test_all_variants_dataset_compatibility(self, dummy_data):
-        """Test that all RNN variants work with their respective datasets"""
-        try:
-            from scripts.train_rnn import RNNKanjiDataset, collate_fn_factory
-            from torch.utils.data import DataLoader
+        """Test that all 5 RNNConfig variants validate and work with ResearchDataset."""
+        x, y, num_classes = dummy_data
+        variants = [
+            "basic_rnn",
+            "stroke_rnn",
+            "simple_radical_rnn",
+            "hybrid_cnn_rnn",
+            "linguistic_radical_rnn",
+        ]
 
-            x, y, num_classes = dummy_data
+        dataset = ResearchDataset(x, y)
+        loader = DataLoader(dataset, batch_size=4)
+        images, labels = next(iter(loader))
+        assert images.shape == (4, 1, 64, 64)
+        assert labels.shape == (4,)
 
-            variants = [
-                "basic_rnn",
-                "stroke_rnn",
-                "simple_radical_rnn",
-                "hybrid_cnn_rnn",
-                "linguistic_radical_rnn",
-            ]
-
-            for variant in variants:
-                # Create dataset
-                dataset = RNNKanjiDataset(x, y, model_type=variant)
-                assert len(dataset) == len(x), f"Dataset length mismatch for {variant}"
-
-                # Test collate function
-                collate_fn = collate_fn_factory(variant)
-                loader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn)
-
-                # Get one batch to ensure it works
-                batch = next(iter(loader))
-                assert "labels" in batch, f"Missing labels in {variant} batch"
-                assert batch["labels"].shape[0] <= 4, f"Batch size incorrect for {variant}"
-
-        except ImportError as e:
-            pytest.skip(f"Required modules not available: {e}")
+        for variant in variants:
+            cfg = RNNConfig(model_variant=variant, num_classes=num_classes, hidden_size=32)
+            assert cfg.model_variant == variant

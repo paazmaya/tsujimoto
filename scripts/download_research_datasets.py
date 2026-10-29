@@ -292,8 +292,9 @@ class ResearchDatasetDownloader:
 
             logger.info(f"Loading dataset from Hugging Face: {hf_repo}")
 
-            # Load and cache dataset
-            load_dataset(hf_repo, cache_dir=str(dataset_dir), trust_remote_code=True)
+            # Load and cache dataset safely (trust_remote_code defaults to False unless required in config)
+            allow_remote = bool(config.get("trust_remote_code", False))
+            load_dataset(hf_repo, cache_dir=str(dataset_dir), trust_remote_code=allow_remote)
 
             # Save dataset info
             info_file = dataset_dir / "dataset_info.json"
@@ -363,7 +364,7 @@ class ResearchDatasetDownloader:
 
     def _extract_dataset(self, archive_path: Path, format_type: str) -> bool:
         """
-        Extract dataset archive.
+        Extract dataset archive safely using path and link validation.
 
         Args:
             archive_path: Path to archive file
@@ -373,29 +374,16 @@ class ResearchDatasetDownloader:
             True if successful
         """
         try:
+            from src.lib.system import safe_extract_tar, safe_extract_zip
+
             extract_dir = archive_path.parent / archive_path.stem
             extract_dir.mkdir(parents=True, exist_ok=True)
 
             if format_type == "zip":
-                import zipfile
-
-                with zipfile.ZipFile(archive_path, "r") as zf:
-                    # Safely extract with path filtering
-                    for member in zf.namelist():
-                        if member.startswith("/") or ".." in member:
-                            logger.warning(f"Skipping potentially unsafe path: {member}")
-                            continue
-                        zf.extract(member, extract_dir)
-            elif format_type == "tar.gz":
-                import tarfile
-
-                with tarfile.open(archive_path, "r:gz") as tf:
-                    # Safely extract with path filtering
-                    for member in tf.getmembers():
-                        if member.name.startswith("/") or ".." in member.name:
-                            logger.warning(f"Skipping potentially unsafe path: {member.name}")
-                            continue
-                        tf.extract(member, extract_dir)
+                safe_extract_zip(archive_path, extract_dir)
+            elif format_type in ("tar.gz", "tar"):
+                mode = "r:gz" if format_type == "tar.gz" else "r:*"
+                safe_extract_tar(archive_path, extract_dir, mode=mode)
             else:
                 logger.warning(f"Unsupported archive format: {format_type}")
                 return False

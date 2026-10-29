@@ -50,26 +50,25 @@ class StrokeDatabaseHandler(DatasetFormatHandler):
         dataset_path.mkdir(parents=True, exist_ok=True)
         return dataset_path
 
-    def extract(self, archive_path: Path, output_dir: Path) -> Path:
+    def extract(self, archive_path: Path, output_dir: Path) -> Optional[Path]:
         """
-        Extract stroke database archive.
+        Extract stroke database archive safely.
 
         Args:
             archive_path: Path to zip archive
             output_dir: Extract to this directory
 
         Returns:
-            Path to extracted dataset
+            Path to extracted dataset, or None if extraction failed
         """
-        import zipfile
+        from src.lib.system import safe_extract_zip
 
         output_dir.mkdir(parents=True, exist_ok=True)
         dataset_dir = output_dir / "stroke_database"
 
         try:
             logger.info(f"Extracting {archive_path} to {dataset_dir}")
-            with zipfile.ZipFile(archive_path, "r") as zf:
-                zf.extractall(dataset_dir)
+            safe_extract_zip(archive_path, dataset_dir)
             logger.info("✓ Extracted Stroke Database")
             return dataset_dir
         except Exception as e:
@@ -115,8 +114,8 @@ class StrokeDatabaseHandler(DatasetFormatHandler):
         Args:
             dataset_path: Path to dataset directory
 
-        Yields:
-            Records with image (rasterized from trajectory) and trajectory metadata
+        Returns:
+            List of records with image (rasterized from trajectory) and trajectory metadata
         """
         records = []
 

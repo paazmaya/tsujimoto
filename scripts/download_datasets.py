@@ -150,10 +150,14 @@ def download_file(
 
             request = urllib.request.Request(url, headers=resume_header)  # noqa: S310
             with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
-                total_size = int(response.headers.get("content-length", 0))
-                downloaded = destination.stat().st_size if destination.exists() else 0
+                status_code = getattr(response, "status", None) or response.getcode()
+                is_partial = status_code == 206 and destination.exists()
+                content_len = int(response.headers.get("content-length", 0))
+                existing_bytes = destination.stat().st_size if is_partial else 0
+                total_size = (existing_bytes + content_len) if content_len > 0 else 0
+                downloaded = existing_bytes
 
-                mode = "ab" if destination.exists() else "wb"
+                mode = "ab" if is_partial else "wb"
                 with open(destination, mode) as f:
                     while True:
                         chunk = response.read(chunk_size)
@@ -169,7 +173,7 @@ def download_file(
                                 f"{total_size / 1024 / 1024:.1f} MB)"
                             )
 
-            logger.info("✓ Successfully downloaded to {destination}")
+            logger.info(f"✓ Successfully downloaded to {destination}")
             return True
 
         except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:

@@ -227,7 +227,11 @@ class ResearchDatasetProcessor:
         # Save chunks
         logger.info(f"\n💾 Saving {len(x_chunks)} chunks...")
         for chunk_idx, (_x, y) in enumerate(
-            tqdm(zip(x_chunks, y_chunks), total=len(x_chunks), desc="Saving chunks")
+            tqdm(
+                zip(x_chunks, y_chunks, strict=True),
+                total=len(x_chunks),
+                desc="Saving chunks",
+            )
         ):
             chunk_file = output_dataset_dir / f"{dataset_name}_chunk_{chunk_idx:03d}.npz"
             np.savez_compressed(chunk_file, X=_x, y=y)

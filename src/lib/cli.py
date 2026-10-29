@@ -79,17 +79,17 @@ def create_app(
     return app
 
 
-def echo_success(message: str):
+def echo_success(message: str) -> None:
     """Echo a success message with green color."""
     typer.echo(typer.style(f"✓ {message}", fg=GREEN, bold=True))
 
 
-def echo_info(message: str):
+def echo_info(message: str) -> None:
     """Echo an info message with cyan color."""
     typer.echo(typer.style(f"ℹ {message}", fg=BRIGHT_CYAN))
 
 
-def echo_error(message: str):
+def echo_error(message: str) -> None:
     """Echo an error message."""
     typer.echo(typer.style(f"✗ {message}", fg=typer.colors.RED, bold=True), err=True)
 
@@ -218,7 +218,7 @@ def confirm(message: str, abort: bool = True) -> bool:
 class CLIContext:
     """Context manager for CLI operations with logging."""
 
-    def __init__(self, operation: str):
+    def __init__(self, operation: str) -> None:
         """
         Initialize CLI context.
 
@@ -227,12 +227,14 @@ class CLIContext:
         """
         self.operation = operation
 
-    def __enter__(self):
+    def __enter__(self) -> "CLIContext":
         """Enter context."""
         echo_info(f"Starting: {self.operation}")
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self, exc_type: Optional[type], exc_val: Optional[BaseException], exc_tb: object
+    ) -> bool:
         """Exit context."""
         if exc_type is None:
             echo_success(f"Completed: {self.operation}")

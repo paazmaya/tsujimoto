@@ -21,12 +21,14 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Any, Dict
 
 import torch
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.lib.conversion import load_model_checkpoint
 from src.lib.logging_utils import setup_logger
 from src.lib.model_export import ModelExporter
 
@@ -77,7 +79,22 @@ Examples:
     parser.add_argument(
         "--quantization",
         type=str,
-        choices=["none", "int8", "4bit_nf4", "4bit_fp4", "bfloat16", "float32"],
+        choices=[
+            "none",
+            "int8",
+            "4bit_nf4",
+            "4bit_fp4",
+            "bfloat16",
+            "float32",
+            "f32",
+            "f16",
+            "q8_0",
+            "q6_k",
+            "q5_k",
+            "q4_k",
+            "q3_k",
+            "q2_k",
+        ],
         default="none",
         help="Quantization format (default: none)",
     )
@@ -148,29 +165,40 @@ Examples:
     return parser
 
 
-def load_checkpoint(checkpoint_path: str, device: str) -> torch.nn.Module:
-    """Load model from checkpoint.
+def load_checkpoint(
+    checkpoint_path: str,
+    device: str = "cpu",
+    allow_unsafe_weights: bool = False,
+) -> Dict[str, Any]:
+    """Load state dict from checkpoint file.
 
     Args:
         checkpoint_path: Path to checkpoint file
-        device: Device to load model to
+        device: Device to load tensors to (default: cpu)
+        allow_unsafe_weights: Allow weights_only=False fallback for legacy checkpoints
 
     Returns:
-        Loaded model
+        Loaded state dict mapping parameter names to tensors
 
     Raises:
         FileNotFoundError: If checkpoint doesn't exist
         RuntimeError: If checkpoint format is invalid
 
     """
-    checkpoint_path = Path(checkpoint_path)
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+    checkpoint_file = Path(checkpoint_path)
+    if not checkpoint_file.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_file}")
 
-    logger.info(f"Loading checkpoint: {checkpoint_path}")
+    logger.info(f"Loading checkpoint: {checkpoint_file}")
 
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Load checkpoint safely with weights_only=True by default
+    try:
+        checkpoint = torch.load(checkpoint_file, map_location=device, weights_only=True)
+    except Exception:
+        if allow_unsafe_weights:
+            checkpoint = torch.load(checkpoint_file, map_location=device, weights_only=False)
+        else:
+            raise
 
     # Handle different checkpoint formats
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
@@ -180,18 +208,19 @@ def load_checkpoint(checkpoint_path: str, device: str) -> torch.nn.Module:
         state_dict = checkpoint["state_dict"]
         logger.info("Detected standard checkpoint format (extracting state_dict)")
     elif isinstance(checkpoint, dict):
-        # Try to use the entire dict as state_dict
         state_dict = checkpoint
         logger.info("Using entire checkpoint as state_dict")
+    elif isinstance(checkpoint, torch.nn.Module):
+        state_dict = checkpoint.state_dict()
+        logger.info("Extracted state_dict from serialized nn.Module")
     else:
-        # Assume it's a direct model state_dict
-        state_dict = checkpoint
+        raise RuntimeError(f"Unsupported checkpoint type: {type(checkpoint)}")
 
     logger.info(f"Loaded state dict with {len(state_dict)} parameters")
     return state_dict
 
 
-def main():
+def main() -> None:
     """Main CLI entry point for model conversion."""
     parser = create_parser()
     args = parser.parse_args()
@@ -205,32 +234,41 @@ def main():
     logger.info("=" * 70)
 
     try:
-        # Load checkpoint
+        # Load checkpoint into model architecture
         checkpoint_path = args.checkpoint
         device = args.device
-        load_checkpoint(checkpoint_path, device)
+        model, inferred_classes, _ = load_model_checkpoint(
+            model_path=checkpoint_path,
+            model_type=args.model_type,
+            num_classes=args.num_classes if args.num_classes != 43427 else 0,
+            image_size=args.image_size,
+        )
+        num_classes = inferred_classes
 
         logger.info(f"Model type: {args.model_type}")
-        logger.info(f"Num classes: {args.num_classes}")
+        logger.info(f"Num classes: {num_classes}")
         logger.info(f"Image size: {args.image_size}")
         logger.info(f"Export format: {args.format}")
         logger.info(f"Quantization: {args.quantization}")
 
-        # Create exporter
-        # Note: ModelExporter expects a model instance with state_dict
-        # Load state_dict into a dummy model for export
-
         exporter = ModelExporter(
-            model=None,  # Will use state_dict mode
+            model=model,
             model_type=args.model_type,
-            num_classes=args.num_classes,
+            num_classes=num_classes,
             device=device,
             image_size=args.image_size,
         )
 
         # Output path
         if args.output is None:
-            output_path = f"{Path(checkpoint_path).stem}_converted.{args.format}"
+            ext_map = {
+                "pytorch": "pth",
+                "onnx": "onnx",
+                "safetensors": "safetensors",
+                "gguf": "gguf",
+            }
+            ext = ext_map.get(args.format, args.format)
+            output_path = f"{Path(checkpoint_path).stem}_converted.{ext}"
         else:
             output_path = args.output
 
@@ -238,15 +276,20 @@ def main():
 
         # Export
         logger.info(f"Exporting model to {args.format}...")
-        if args.quantization == "none":
-            quantization = None
+        if args.format == "gguf":
+            quantization = "q4_k" if args.quantization in ("none", "float32") else args.quantization
         else:
-            quantization = args.quantization
+            quantization = "float32" if args.quantization == "none" else args.quantization
+
+        export_kwargs: Dict[str, Any] = {"save_metadata": args.save_metadata}
+        if args.format == "onnx":
+            export_kwargs["opset_version"] = args.opset_version
 
         exporter.export(
             output_path=output_path,
-            format=args.format,
+            export_format=args.format,
             quantization=quantization,
+            **export_kwargs,
         )
 
         logger.info("=" * 70)

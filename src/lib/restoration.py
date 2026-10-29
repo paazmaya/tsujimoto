@@ -192,18 +192,22 @@ class TraditionalBinarization(nn.Module):
         """
         b, h, w = image.shape
 
-        # Add padding and batch/channel dimensions
+        # Add padding and batch/channel dimensions (cap window_size to valid reflect padding range)
+        eff_window = min(window_size, max(3, min(h, w) - 1))
+        if eff_window % 2 == 0:
+            eff_window = max(3, eff_window - 1)
+        pad_size = eff_window // 2
         image_padded = F.pad(
             image.unsqueeze(1),
-            (window_size // 2, window_size // 2, window_size // 2, window_size // 2),
+            (pad_size, pad_size, pad_size, pad_size),
             mode="reflect",
         )
 
         # Compute local mean using average pooling
-        local_mean = F.avg_pool2d(image_padded, kernel_size=window_size, stride=1, padding=0)
+        local_mean = F.avg_pool2d(image_padded, kernel_size=eff_window, stride=1, padding=0)
 
-        # Binarize: pixel > local_mean - constant
-        constant = 2
+        # Binarize: pixel > local_mean - constant (normalized [0, 1] scale)
+        constant = 0.02
         binary = (image > (local_mean.squeeze(1) - constant)).float()
 
         return binary
@@ -305,8 +309,12 @@ class SealsRemovalModule(nn.Module):
             dilated_mask = self._morphological_dilate(mask, kernel_size=7)
 
             # Replace masked region with neighborhood average
+            inpainted = image.clone()
             for _ in range(2):
-                image = image * (1 - dilated_mask) + self._neighborhood_mean(image) * dilated_mask
+                inpainted = (
+                    inpainted * (1 - dilated_mask)
+                    + self._neighborhood_mean(inpainted) * dilated_mask
+                )
 
         elif method == "diffusion":
             # Iterative diffusion/smoothing in masked region
@@ -342,10 +350,12 @@ class SealsRemovalModule(nn.Module):
     def _morphological_close(mask: Tensor, kernel_size: int = 5) -> Tensor:
         """Morphological closing (dilation followed by erosion)."""
         # Dilation
-        dilated = F.max_pool2d(mask, kernel_size=kernel_size, padding=kernel_size // 2)
+        dilated = F.max_pool2d(mask, kernel_size=kernel_size, stride=1, padding=kernel_size // 2)
 
         # Erosion
-        eroded = F.max_pool2d(1 - dilated, kernel_size=kernel_size, padding=kernel_size // 2)
+        eroded = F.max_pool2d(
+            1 - dilated, kernel_size=kernel_size, stride=1, padding=kernel_size // 2
+        )
         closed = 1 - eroded
 
         return closed
@@ -459,8 +469,12 @@ class RestorationPreprocessor(nn.Module):
 
         for _ in range(iterations):
             # Closing: dilation then erosion (fills small holes)
-            dilated = F.max_pool2d(result, kernel_size=kernel_size, padding=kernel_size // 2)
-            result = F.max_pool2d(1 - dilated, kernel_size=kernel_size, padding=kernel_size // 2)
+            dilated = F.max_pool2d(
+                result, kernel_size=kernel_size, stride=1, padding=kernel_size // 2
+            )
+            result = F.max_pool2d(
+                1 - dilated, kernel_size=kernel_size, stride=1, padding=kernel_size // 2
+            )
             result = 1 - result
 
         return result

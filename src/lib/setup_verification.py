@@ -266,10 +266,16 @@ class SetupVerifier:
         """
         results: Dict[str, float] = {}
 
-        # RAM check
-        ram_total_bytes = os.popen("vm_stat | grep 'Pages free' | awk '{print $3}'").read()  # noqa: S605, S607
-        ram_available_gb = float(ram_total_bytes.strip()) / 1024 / 1024 if ram_total_bytes else 0
-        ram_total_gb = shutil.disk_usage("/").total / 1e9 / 1000  # Approximation
+        # RAM check via psutil (cross-platform and safe without shell popen)
+        try:
+            import psutil
+
+            mem = psutil.virtual_memory()
+            ram_available_gb = mem.available / (1024**3)
+            ram_total_gb = mem.total / (1024**3)
+        except Exception:
+            ram_available_gb = 0.0
+            ram_total_gb = 0.0
 
         results["ram_available_gb"] = ram_available_gb
         results["ram_total_gb"] = ram_total_gb
@@ -458,20 +464,18 @@ class SetupVerifier:
         return results
 
     def verify_training_scripts(self) -> Dict[str, bool]:
-        """Verify presence of required training scripts.
+        """Verify presence of required unified training and conversion scripts.
 
         Returns:
             Dictionary mapping script names to existence (True/False)
 
         """
         scripts = [
-            "train_cnn_model.py",
-            "train_rnn.py",
-            "train_vit.py",
-            "train_hiercode.py",
-            "train_qat.py",
-            "train_radical_rnn.py",
-            "train_hiercode_higita.py",
+            "train.py",
+            "convert_model.py",
+            "prepare_dataset.py",
+            "verify_setup.py",
+            "analyze_model.py",
         ]
 
         results = {}

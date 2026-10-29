@@ -249,21 +249,23 @@ class BaseModelTrainer(ABC):
         for batch_idx, batch in enumerate(self.train_loader):
             self.optimizer.zero_grad()
 
-            # Forward pass
-            batch_metrics = self.process_batch(batch)
-            loss = torch.tensor(batch_metrics["loss"], requires_grad=True).to(self.device)
-
-            # For actual loss computation, get fresh forward pass
+            # Single forward pass per batch
             outputs, loss = self.forward_pass(batch)
 
             # Backward pass
             loss.backward()
             self.optimizer.step()
 
+            # Compute batch metrics from the same forward pass
+            _, labels = batch
+            _, predicted = torch.max(outputs.data, 1)
+            correct = (predicted == labels.to(self.device)).sum().item()
+            total = labels.size(0)
+
             # Update metrics
             total_loss += loss.item()
-            total_correct += batch_metrics["correct"]
-            total_samples += batch_metrics["total"]
+            total_correct += correct
+            total_samples += total
 
             if (batch_idx + 1) % 100 == 0:
                 logger.debug(
@@ -271,8 +273,8 @@ class BaseModelTrainer(ABC):
                     f"Loss: {loss.item():.4f}"
                 )
 
-        avg_loss = total_loss / len(self.train_loader)
-        accuracy = total_correct / total_samples
+        avg_loss = total_loss / max(len(self.train_loader), 1)
+        accuracy = total_correct / max(total_samples, 1)
 
         return avg_loss, accuracy
 
@@ -652,7 +654,7 @@ class QATTrainer(BaseModelTrainer):
         num_epochs: int = 100,
         early_stopping: bool = True,
         save_best_model: bool = True,
-        qat_enabled: bool = False,
+        qat_enabled: bool = True,
     ) -> Dict[str, List[float]]:
         """Train with optional quantization-aware training.
 
@@ -660,7 +662,7 @@ class QATTrainer(BaseModelTrainer):
             num_epochs: Number of epochs to train
             early_stopping: Whether to use early stopping
             save_best_model: Whether to save best model
-            qat_enabled: Whether to enable fake quantization during training
+            qat_enabled: Whether to enable fake quantization during training (default: True)
 
         Returns:
             Training history dictionary

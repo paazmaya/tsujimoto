@@ -689,21 +689,21 @@ class RestorationPipelineLightningModule(pl.LightningModule):
     def __init__(
         self,
         pipeline: nn.Module,
-        trainer: nn.Module,
+        pipeline_trainer: nn.Module,
         config: "RestorationPipelineConfig",
     ):
         """Initialize Restoration Pipeline module.
 
         Args:
             pipeline: DetectionRestorationClassificationPipeline instance
-            trainer: PipelineTrainer instance
+            pipeline_trainer: PipelineTrainer instance
             config: RestorationPipelineConfig
         """
         super().__init__()
         self.pipeline = pipeline
-        self.trainer = trainer
+        self.pipeline_trainer = pipeline_trainer
         self.config = config
-        self.save_hyperparameters(ignore=["pipeline", "trainer"])
+        self.save_hyperparameters(ignore=["pipeline", "pipeline_trainer"])
 
     def forward(self, images: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Forward pass through pipeline."""
@@ -713,7 +713,7 @@ class RestorationPipelineLightningModule(pl.LightningModule):
         """Training step with multi-task loss."""
         images, detections, clean_images, labels = batch
 
-        outputs = self.trainer(
+        outputs = self.pipeline_trainer(
             image=images,
             detection_targets=detections,
             clean_image=clean_images,

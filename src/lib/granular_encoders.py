@@ -463,7 +463,7 @@ class MultiGranularityFusionModule(nn.Module):
         weights = weights / weights.sum()
 
         # Weighted sum
-        fused = sum(w * c for w, c in zip(weights, components))
+        fused = sum(w * c for w, c in zip(weights, components, strict=True))
         fused = F.normalize(fused, p=2, dim=1)
 
         return fused
@@ -504,6 +504,12 @@ class FinegrainedDecoupledContrastiveLoss(nn.Module):
         Returns:
             loss: Scalar contrastive loss
         """
+        # Align embedding dimensions if image_emb and text_emb differ (e.g. stroke/radical vs character text)
+        if image_emb.shape[1] != text_emb.shape[1]:
+            target_dim = min(image_emb.shape[1], text_emb.shape[1])
+            image_emb = F.adaptive_avg_pool1d(image_emb.unsqueeze(1), target_dim).squeeze(1)
+            text_emb = F.adaptive_avg_pool1d(text_emb.unsqueeze(1), target_dim).squeeze(1)
+
         # Normalize
         image_emb = F.normalize(image_emb, p=2, dim=1)
         text_emb = F.normalize(text_emb, p=2, dim=1)
@@ -549,9 +555,23 @@ class CrossLevelConsistencyLoss(nn.Module):
     and radicals should be consistent with characters they compose.
     """
 
-    def __init__(self):
-        """Initialize consistency loss."""
+    def __init__(
+        self,
+        stroke_dim: int = 128,
+        radical_dim: int = 256,
+        character_dim: int = 512,
+    ) -> None:
+        """
+        Initialize consistency loss with cross-level projection layers.
+
+        Args:
+            stroke_dim: Stroke embedding dimension
+            radical_dim: Radical embedding dimension
+            character_dim: Character embedding dimension
+        """
         super().__init__()
+        self.stroke_to_radical = nn.Linear(stroke_dim, radical_dim, bias=False)
+        self.radical_to_character = nn.Linear(radical_dim, character_dim, bias=False)
 
     def forward(
         self,
@@ -560,7 +580,7 @@ class CrossLevelConsistencyLoss(nn.Module):
         character_emb: Tensor,
     ) -> Tensor:
         """
-        Compute hierarchical consistency loss.
+        Compute hierarchical consistency loss across stroke, radical, and character levels.
 
         Args:
             stroke_emb: (batch, stroke_dim) stroke embeddings
@@ -568,20 +588,44 @@ class CrossLevelConsistencyLoss(nn.Module):
             character_emb: (batch, character_dim) character embeddings
 
         Returns:
-            loss: Consistency loss
+            loss: Scalar consistency loss tensor
         """
+        # Project lower levels to match adjacent upper level dimensions if needed
+        if stroke_emb.shape[-1] != radical_emb.shape[-1]:
+            if stroke_emb.shape[-1] == self.stroke_to_radical.in_features and (
+                radical_emb.shape[-1] == self.stroke_to_radical.out_features
+            ):
+                stroke_proj = self.stroke_to_radical(stroke_emb)
+            else:
+                stroke_proj = F.adaptive_avg_pool1d(
+                    stroke_emb.unsqueeze(1), radical_emb.shape[-1]
+                ).squeeze(1)
+        else:
+            stroke_proj = stroke_emb
+
+        if radical_emb.shape[-1] != character_emb.shape[-1]:
+            if radical_emb.shape[-1] == self.radical_to_character.in_features and (
+                character_emb.shape[-1] == self.radical_to_character.out_features
+            ):
+                radical_proj = self.radical_to_character(radical_emb)
+            else:
+                radical_proj = F.adaptive_avg_pool1d(
+                    radical_emb.unsqueeze(1), character_emb.shape[-1]
+                ).squeeze(1)
+        else:
+            radical_proj = radical_emb
+
         # Normalize embeddings
-        stroke_emb = F.normalize(stroke_emb, p=2, dim=1)
-        radical_emb = F.normalize(radical_emb, p=2, dim=1)
-        character_emb = F.normalize(character_emb, p=2, dim=1)
+        stroke_proj = F.normalize(stroke_proj, p=2, dim=1)
+        radical_norm = F.normalize(radical_emb, p=2, dim=1)
+        radical_proj = F.normalize(radical_proj, p=2, dim=1)
+        character_norm = F.normalize(character_emb, p=2, dim=1)
 
-        # Project to common dimension for comparison
-        # stroke_proj = F.normalize(F.linear(stroke_emb, torch.eye(stroke_emb.shape[1])), p=2, dim=1)
-
-        # KL divergence between adjacent levels
-        # (simplified: use cosine distance as proxy)
-        stroke_to_radical_dist = 1 - torch.cosine_similarity(stroke_emb, radical_emb)
-        radical_to_character_dist = 1 - torch.cosine_similarity(radical_emb, character_emb)
+        # Cosine distance between adjacent hierarchy levels
+        stroke_to_radical_dist = 1.0 - torch.cosine_similarity(stroke_proj, radical_norm, dim=1)
+        radical_to_character_dist = 1.0 - torch.cosine_similarity(
+            radical_proj, character_norm, dim=1
+        )
 
         loss = stroke_to_radical_dist.mean() + radical_to_character_dist.mean()
 
