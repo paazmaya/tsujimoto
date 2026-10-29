@@ -30,7 +30,7 @@ requires-python = ">=3.11"
 
 dependencies = [
   # Core ML framework with CUDA support
-  "torch>=2.10.0",
+  "torch>=2.13.0",
   "torchvision>=0.24.1",
   "pytorch-lightning>=2.1.0",
   # Data processing and utilities
