@@ -3,8 +3,8 @@ name = "tsujimoto"
 version = "0.1.0"
 description = "Neural networks for Japanese kanji character recognition using ETL9G dataset"
 readme = "README.md"
-license = { file = "LICENSE" }
-authors = [{ name = "paazmaya", email = "paazmaya@yahoo.com" }]
+license = "MIT"
+authors = [{ name = "Juga Paazmaya", email = "paazmaya@yahoo.com" }]
 keywords = [
   "kanji",
   "recognition",
