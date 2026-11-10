@@ -1,5 +1,7 @@
 # Tsujimoto - Kanji Recognition Training
 
+[![Test and Quality](https://github.com/paazmaya/tsujimoto/actions/workflows/test-and-quality.yml/badge.svg)](https://github.com/paazmaya/tsujimoto/actions/workflows/test-and-quality.yml)
+
 This project trains multiple neural network architectures for Japanese kanji character recognition using the expanded ETL6-9 dataset (4,154 classes, 934,622 samples - 53% more data than ETL9G alone).
 
 ## 📚 Documentation

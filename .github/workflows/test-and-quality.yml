@@ -3,8 +3,14 @@ name: Test and Quality
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
   pull_request:
     branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
   schedule:
     - cron: "0 0 * * 1"
 
