@@ -123,7 +123,7 @@ def save_config(config, output_dir: str, filename: str = "config.json") -> None:
         # Fall back to __dict__
         config_dict = vars(config)
 
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         json.dump(config_dict, f, indent=2)
 
     logger.info(f"✓ Configuration saved to {config_file}")
@@ -139,7 +139,7 @@ def load_config_from_json(config_path: str) -> dict:
     Returns:
         dict: Configuration dictionary
     """
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config_dict = json.load(f)
 
     logger.info(f"✓ Configuration loaded from {config_path}")

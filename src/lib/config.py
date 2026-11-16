@@ -175,7 +175,7 @@ class OptimizationConfig(BaseModel):
         """Save configuration to JSON file"""
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             # Use Pydantic's model_dump_json for better serialization
             f.write(self.model_dump_json(indent=2))
         logger.info(f"✓ Configuration saved to {path}")
@@ -183,7 +183,7 @@ class OptimizationConfig(BaseModel):
     @classmethod
     def load(cls, path: str) -> "OptimizationConfig":
         """Load configuration from JSON file"""
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return cls(**data)
 
